@@ -1,0 +1,11 @@
+import { createClerkClient } from '@clerk/backend';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { appendFile } from 'node:fs/promises';
+if (!process.env.CLERK_SECRET_KEY || !process.env.BREACHBAY_SERVICE_ENV_PATH) throw new Error('Protected operator environment required');
+const client = createClerkClient({secretKey:process.env.CLERK_SECRET_KEY});
+const existing = await client.users.getUserList({externalId:['breachbay-investigation-service'],limit:2});
+if(existing.data.length>1) throw new Error('Service identity is ambiguous');
+const user = existing.data[0] ?? await client.users.createUser({externalId:'breachbay-investigation-service',firstName:'BreachBay',lastName:'Investigation service',emailAddress:[`investigation-${randomUUID()}@breachbay.us`],password:randomBytes(48).toString('base64url'),privateMetadata:{purpose:'Restricted investigation service; explicit incident grant required'}});
+if(user.phoneNumbers.length || user.username || !user.passwordEnabled) throw new Error('Service sign-in configuration mismatch');
+await appendFile(process.env.BREACHBAY_SERVICE_ENV_PATH,`\nAI_SERVICE_CLERK_USER_ID=${user.id}\n`,{mode:0o600});
+console.log('Dedicated service identity configured; use establish-service-session.mjs for production ticket sign-in. Incident grant is still required.');

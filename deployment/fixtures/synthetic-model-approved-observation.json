@@ -1,0 +1,7 @@
+{
+  "eventType": "synthetic_credential_reuse",
+  "description": "SYNTHETIC ACCEPTANCE ONLY: A dedicated responder test shows a successful workstation session from the documentation-only address 203.0.113.77, followed by application-host access. No real account or credential is present. Correlate existing approved observations before drawing conclusions. This second synthetic observation is explicitly approved for the model-use acceptance test.",
+  "assetId": "inc_928b9e424c3c616caf416a7bd2b75f865ec819bf6c4426dffbeb690584c14854:workstation",
+  "indicator": "203.0.113.77",
+  "outcome": "synthetic_success"
+}

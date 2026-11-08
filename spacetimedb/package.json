@@ -1,0 +1,1 @@
+{"name":"breachbay-spacetimedb","private":true,"type":"module","dependencies":{"spacetimedb":"2.14.1"},"devDependencies":{"typescript":"~5.6.2"},"scripts":{"build":"spacetime build","typecheck":"tsc --noEmit"}}

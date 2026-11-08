@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import {canonicalPlanning,boundedNextQueries} from '../../../../spacetimedb/src/planning';
+import {credentialCompromiseScenario} from '../../simulation/scenario';
+import {actionStatusFromSnapshot} from '../action-status';
+import {completedRunResult} from '../investigation-recovery';
+import type {IncidentSnapshot} from '../../contracts';
+const scenario=credentialCompromiseScenario('i');
+const action={type:'ISOLATE_SIMULATED_HOST' as const,targetIds:['app-host']};
+const plan={assumptions:[],uncertainty:[],alternatives:[{action:{type:'BLOCK_SIMULATED_ROUTE',targetIds:['jump-db']},rationale:'Synthetic route alternative',tradeoffs:[],expectedImpact:{containmentCoverage:999}}]};
+const result=canonicalPlanning(plan,scenario,action);
+assert(result.alternatives[0].expectedImpact!.containmentCoverage<=1);
+assert.throws(()=>canonicalPlanning({...plan,alternatives:[{...plan.alternatives[0],action}]},scenario,action));
+assert.throws(()=>boundedNextQueries(['x'.repeat(201)]));assert.throws(()=>boundedNextQueries(Array(6).fill('query')));
+const snapshot={incident:{id:'i'},investigations:[{id:'r',incidentId:'i',status:'COMPLETED'}],findings:[{incidentId:'i',investigationId:'r',summary:'supported',confidence:'HIGH',evidenceIds:['e'],unknowns:[],recommendedNextQueries:['Review route']}],proposals:[{id:'p',incidentId:'i',investigationId:'r',status:'VERIFIED_SUCCESS',version:2,expectedVersion:1,planning:result,privatePayload:'excluded'}],verifications:[{proposalId:'p',incidentId:'foreign',status:'VERIFIED_FAILED',observedVersion:99,summary:'foreign'},{proposalId:'p',incidentId:'i',status:'VERIFIED_SUCCESS',observedVersion:2,summary:'token=synthetic-secret',privatePayload:'excluded'}]} as unknown as IncidentSnapshot;
+const status=actionStatusFromSnapshot(snapshot,'i','p');assert.equal(status.verification?.observedVersion,2);assert(!JSON.stringify(status).includes('synthetic-secret'));assert(!JSON.stringify(status).includes('privatePayload'));assert.throws(()=>actionStatusFromSnapshot(snapshot,'foreign','p'));assert.throws(()=>actionStatusFromSnapshot(snapshot,'i','foreign'));
+const recovered=completedRunResult(snapshot,'r')!;assert.deepEqual(recovered.planning,result);assert.deepEqual(recovered.findings[0].recommendedNextQueries,['Review route']);
+console.log('PASS authoritative planning, bounded next queries, scoped safe action-status and canonical recovery');

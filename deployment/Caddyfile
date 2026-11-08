@@ -1,0 +1,14 @@
+breachbay.us {
+  encode zstd gzip
+  header {
+    X-Content-Type-Options nosniff
+    Referrer-Policy strict-origin-when-cross-origin
+    X-Frame-Options SAMEORIGIN
+    Strict-Transport-Security "max-age=31536000"
+  }
+  reverse_proxy 127.0.0.1:8080
+}
+db.breachbay.us {
+  header Strict-Transport-Security "max-age=31536000"
+  reverse_proxy 127.0.0.1:8081
+}

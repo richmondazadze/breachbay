@@ -1,0 +1,23 @@
+[Unit]
+Description=BreachBay command application
+After=network-online.target breachbay-db.service
+Wants=network-online.target
+[Service]
+User=breachbay
+Group=breachbay
+WorkingDirectory=/opt/breachbay/current
+EnvironmentFile=/etc/breachbay/application.env
+Environment=NODE_ENV=production
+Environment=PATH=/opt/breachbay/runtime/node/bin:/usr/bin:/bin
+ExecStart=/opt/breachbay/runtime/node/bin/node node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port 3000
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/breachbay /opt/breachbay/current/.next
+[Install]
+WantedBy=multi-user.target

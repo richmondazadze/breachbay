@@ -1,0 +1,34 @@
+node_modules/
+.next/
+out/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.tsbuildinfo
+__pycache__/
+*.py[cod]
+.DS_Store
+
+deployment/private/
+
+# Provider/account proof stays local; publish only sanitized product screenshots.
+design/brand/clerk-*.jpg
+design/brand/dns-*.jpg
+design/brand/vultr-*.jpg
+design/brand/live-sign-up.jpg
+
+# Keep project documentation private.
+*.md
+*.mdx
+*.doc
+*.docx
+*.pdf
+*.ppt
+*.pptx
+*.xlsx
+*.rtf
+*.odt
+coordination/
+design/

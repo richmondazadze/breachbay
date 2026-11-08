@@ -66,7 +66,12 @@ export function finalResponseSchema(scenario: Scenario, evidence: SanitizedEvide
 function matches(value: unknown, schema: SchemaNode): boolean {
   if (schema.anyOf) return schema.anyOf.some(branch => matches(value, branch));
   if (schema.type === 'null') return value === null;
-  if (schema.type === 'string') return typeof value === 'string' && (schema.minLength === undefined || value.length >= schema.minLength) && (schema.maxLength === undefined || value.length <= schema.maxLength) && (!schema.enum || schema.enum.includes(value));
+  if (schema.type === 'string') {
+    if (typeof value !== 'string') return false;
+    // JSON Schema string bounds count Unicode code points, rather than UTF-16 code units.
+    const length = Array.from(value).length;
+    return (schema.minLength === undefined || length >= schema.minLength) && (schema.maxLength === undefined || length <= schema.maxLength) && (!schema.enum || schema.enum.includes(value));
+  }
   if (schema.type === 'array') return Array.isArray(value) && (schema.minItems === undefined || value.length >= schema.minItems) && (schema.maxItems === undefined || value.length <= schema.maxItems) && (!schema.uniqueItems || new Set(value).size === value.length) && value.every(item => !!schema.items && matches(item, schema.items));
   if (schema.type === 'object') {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return false;

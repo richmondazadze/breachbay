@@ -29,6 +29,23 @@ test('structural checker accepts complete scoped controls and preserves null wit
   validateFinalResponseSchema(insufficient, format);
 });
 
+test('string bounds count Unicode code points without normalization or output repair', () => {
+  // JSON Schema counts code points: supplementary characters count once, combining marks separately.
+  const accepted = ['\u{1F512}'.repeat(201), '\u{1F512}'.repeat(400), 'x'.repeat(400), 'e\u0301'.repeat(200)];
+  for (const summary of accepted) {
+    const value = structuralControl(); value.findings[0].summary = summary;
+    const parsed = JSON.parse(JSON.stringify(value)), before = JSON.stringify(parsed);
+    validateFinalResponseSchema(parsed, format);
+    assert.equal(JSON.stringify(parsed), before);
+  }
+  for (const summary of ['', '\u{1F512}'.repeat(401), 'x'.repeat(401), 'e\u0301'.repeat(201)]) {
+    const value = structuralControl(); value.findings[0].summary = summary;
+    const before = JSON.stringify(value);
+    assert.throws(() => validateFinalResponseSchema(value, format), fixedFailure);
+    assert.equal(JSON.stringify(value), before);
+  }
+});
+
 test('missing fields, malformed planning arrays, aliases and unsupported fields are rejected without repair', () => {
   const mutations: ((value: any) => void)[] = [
     v => { delete v.planning; }, v => { delete v.proposal; }, v => { delete v.findings; },

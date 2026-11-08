@@ -5,6 +5,7 @@ import { ResponsePlanning } from "./response-planning";
 import { GraphRelationshipReview } from "./graph-relationship-review";
 import { IncidentHeading } from "./incident-heading";
 import { InvestigationTrace } from "./investigation-trace";
+import { InvestigationOrchestration } from "./investigation-orchestration";
 import { IncidentTimeline } from "./incident-timeline";
 import { IncidentDetails } from "./incident-details";
 import { IncidentRetention } from "./incident-retention";
@@ -106,8 +107,7 @@ export function ConnectedIncident({
                 : "Connection required"}
             </h1>
             <p>
-              {state.error ??
-                "No authenticated backend adapter is configured. Synthetic records are available separately in the preview."}
+              {state.error ?? (state.connection === "connecting" ? "Loading your secure incident connection." : "The secure incident connection is unavailable. Sign in again to restore access.")}
             </p>
           </div>
         </div>
@@ -195,7 +195,11 @@ export function ConnectedIncident({
               id: a.id,
               name: a.name,
               state: a.state,
+              kind: a.type,
             }))}
+            modelLinks={s.edges.map(e=>({id:e.id,from:e.fromId,to:e.toId,enabled:e.enabled,verified:e.verificationStatus==="VERIFIED",label:displayLabel(e.type)}))}
+            modelRunning={state.connection==="live" && latestInvestigation?.status==="RUNNING"}
+            orchestration={latestInvestigation && <InvestigationOrchestration run={latestInvestigation} events={s.streamEvents ?? []} tools={s.toolRuns} evidence={s.evidence} onInspect={setSelected} connected={state.connection==="live"} compact />}
             evidence={s.evidence}
             investigationStatus={
               latestInvestigation?.status ?? "No runs requested"
@@ -418,6 +422,7 @@ export function ConnectedIncident({
           {state.investigationPending && <p className="small" role="status">Investigation request in progress. Server-recorded runs show its status; cancellation and collaboration remain available.</p>}
           {state.investigationError && <p className="impact-warning" role="alert">{state.investigationError}</p>}
           <AuthenticationRecovery error={state.investigationAuthenticationError} />
+          {latestInvestigation && <InvestigationOrchestration run={latestInvestigation} events={s.streamEvents ?? []} tools={s.toolRuns} evidence={s.evidence} onInspect={setSelected} connected={state.connection==="live"} />}
           {s.investigations.map((i) => (
             <div className="trace-step" key={i.id}>
               <div>

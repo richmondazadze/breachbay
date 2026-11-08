@@ -15,10 +15,11 @@ import { displayLabel } from "./ui/labels";
 import { EvidenceCitations } from "./decision-details";
 import { useInterfaceMotion } from "@/hooks/use-interface-motion";
 import { Search, Network, ArrowUpRight, FileText } from "./ui/icons";
+import { ResponseModel, type ResponseModelLink } from "./response-model/response-model";
 interface Props {
   nodes: Node[];
   edges: Edge[];
-  assets: { id: string; name: string; state: string }[];
+  assets: { id: string; name: string; state: string; kind?: string }[];
   evidence: { id: string; title: string; source: string }[];
   investigationStatus: string;
   assessment: string;
@@ -29,18 +30,21 @@ interface Props {
   synthetic?: boolean;
   containmentCoverage?: number;
   containmentVersion?: number;
+  modelLinks?: ResponseModelLink[];
+  modelRunning?: boolean;
+  orchestration?: React.ReactNode;
 }
 export function OperationalOverview(p: Props) {
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState("all");
-  const [list, setList] = useState(false);
+  const [viewMode, setViewMode] = useState<"model"|"graph"|"list">("model");
   const camera = useRef<Viewport | undefined>(undefined);
   const flow = useRef<ReactFlowInstance | null>(null);
   const { duration, instant } = useInterfaceMotion();
   const shown = p.assets.filter(
     (a) =>
       a.name.toLowerCase().includes(query.toLowerCase()) &&
-      (scope === "all" || a.state.toLowerCase() !== "healthy"),
+      (scope === "all" || !["healthy","active"].includes(a.state.toLowerCase())),
   );
   const ids = new Set(shown.map((a) => a.id));
   // Use the full supplied layout, not the filtered subset: scope changes and
@@ -193,8 +197,8 @@ export function OperationalOverview(p: Props) {
               <option value="all">All assets</option>
               <option value="risk">At risk / uncertain</option>
             </select>
-            <div className="bb-segmented" aria-label="Topology view">{[false,true].map(isList=><button key={String(isList)} aria-pressed={list===isList} onClick={()=>setList(isList)}><span>{isList ? "List" : "Graph"}</span></button>)}</div>
-            {!list && <button className="text-button" onClick={()=>void flow.current?.fitView({padding:0.14,maxZoom:1,duration:duration*1000})}>Fit diagram</button>}
+            <div className="bb-segmented" aria-label="Topology view">{(["model","graph","list"] as const).map(mode=><button key={mode} aria-pressed={viewMode===mode} onClick={()=>setViewMode(mode)}><span>{mode === "model" ? "3D model" : displayLabel(mode)}</span></button>)}</div>
+            {viewMode === "graph" && <button className="text-button" onClick={()=>void flow.current?.fitView({padding:0.14,maxZoom:1,duration:duration*1000})}>Fit diagram</button>}
           </div>
           <div className="graph-legend">
             <span>
@@ -206,7 +210,9 @@ export function OperationalOverview(p: Props) {
               Hypothesis
             </span>
           </div>
-          <motion.div key={list ? "list" : "graph"} initial={instant ? false : {opacity:0}} animate={{opacity:1}} transition={{duration,ease:[0.23,1,0.32,1]}}>{list ? (
+          <motion.div key={viewMode} initial={instant ? false : {opacity:0}} animate={{opacity:1}} transition={{duration,ease:[0.23,1,0.32,1]}}>{viewMode === "model" ? (
+            <ResponseModel variant="operational" title="Scoped response model" nodes={shown.map(a=>({id:a.id,label:a.name,kind:a.kind,state:a.state}))} links={(p.modelLinks ?? p.edges.map(e=>({id:e.id,from:e.source,to:e.target,enabled:true,verified:!e.style?.strokeDasharray,label:typeof e.label==="string" ? e.label : undefined}))).filter(e=>ids.has(e.from)&&ids.has(e.to))} onSelect={p.onInspect} instant={instant} running={p.modelRunning ?? false} />
+          ) : viewMode === "list" ? (
             <div className="asset-list">
               {shown.map((a) => (
                 <button key={a.id} onClick={() => p.onInspect(a.id)}>
@@ -284,6 +290,7 @@ export function OperationalOverview(p: Props) {
         animate={{ opacity: 1, transform: "translateY(0px)" }}
         transition={{ duration, ease: [0.23, 1, 0.32, 1] }}
       >
+        {p.orchestration}
         <section className="panel">
           <div className="panel-title">
             <h2>Decision queue</h2>

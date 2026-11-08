@@ -8,6 +8,7 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import "./globals.css";
 import "./brand-fonts.css";
+import "@/components/premium-workspace.css";
 export const metadata: Metadata = {
   title: "BreachBay | Incident command",
   description: "Investigate simulated cyber incidents together, compare response tradeoffs, and decide with evidence. AI investigates. Humans stay in control.",

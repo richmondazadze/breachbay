@@ -1,9 +1,15 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useReducedMotion } from "motion/react";
 export function useInterfaceMotion() {
-  const reduce = useReducedMotion();
+  const [reduce, setReduce] = useState(true);
   const [keyboard, setKeyboard] = useState(false);
+  useEffect(() => {
+    const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReduce(preference.matches);
+    update();
+    preference.addEventListener("change", update);
+    return () => preference.removeEventListener("change", update);
+  }, []);
   useEffect(() => {
     const key = () => {
       setKeyboard(true);

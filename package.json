@@ -26,12 +26,14 @@
     "runeicons-react": "0.1.0",
     "server-only": "0.0.1",
     "spacetimedb": "2.14.1",
-    "tailwind-merge": "2.6.0"
+    "tailwind-merge": "2.6.0",
+    "three": "0.187.0"
   },
   "devDependencies": {
     "@types/node": "22.10.2",
     "@types/react": "19.0.3",
     "@types/react-dom": "19.0.2",
+    "@types/three": "0.187.0",
     "tsx": "4.20.6",
     "typescript": "5.9.3"
   }

@@ -3164,6 +3164,7 @@ html[data-input="keyboard"] .theme-toggle-thumb {
   --font-interface: 'Switzer', Arial, sans-serif;
   --font-ui: var(--font-interface);
   --brand-blue: #2f6bff;
+  --acid-lime: #d7ff3f;
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 }
 html[data-theme="light"] {
@@ -3421,7 +3422,7 @@ html[data-theme] .bb-app .impact-preview { background: var(--surface-secondary);
 html[data-theme] .bb-app .impact-warning { color: var(--orange); }
 html[data-theme] .bb-app .impact-columns { gap: 20px; }
 html[data-theme] .bb-app .impact-change { flex-wrap: wrap; gap: 8px; }
-.bb-app .receipt-panel { border: 1px solid var(--line); border-left: 3px solid var(--teal); border-radius: 6px; padding: 12px 15px; margin-bottom: 20px; background: var(--active-surface); }
+.bb-app .receipt-panel { border: 1px solid var(--line); border-radius: 6px; padding: 16px 18px; margin-bottom: 20px; background: var(--panel); }
 .bb-app .receipt-panel > p { font-size: 13px; }
 .bb-app .receipt-panel summary { color: var(--teal); font-size: 12px; margin-top: 6px; }
 .bb-app .receipt-panel .command-receipt { font-family: 'IBM Plex Mono',monospace; font-size: 11px; margin-top: 10px; }

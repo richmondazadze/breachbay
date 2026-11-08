@@ -15,6 +15,10 @@ export default function WorkspacePreview() {
     <MissionDashboard
       incidents={[{ id: incidentId, title: "Customer database exposure", severity: "CRITICAL", status: "INVESTIGATING", classification: "SYNTHETIC", openTasks: 1, myTasks: 1, pendingApprovals: 1, lastActivity: "2026-11-08T08:15:00Z" }]}
       activity={events}
+      messages={[
+        {id:"example-message-1",incidentId,authorLabel:"Synthetic investigator",text:"The application access log is attached. Please review the database connection before deciding on isolation.",createdAt:"2026-11-08T08:06:00Z",incidentTitle:"Customer database exposure"},
+        {id:"example-message-2",incidentId,authorLabel:"Synthetic commander",text:"Reviewing the service impact. The remaining jump-host route needs a separate decision.",createdAt:"2026-11-08T08:16:00Z",incidentTitle:"Customer database exposure"},
+      ]}
       responders={[{ userId: "example-investigator", role: "INVESTIGATOR" }, { userId: "example-commander", role: "COMMANDER" }]}
       confirmed
       onOpen={() => { window.location.href = "/command"; }}

@@ -22,7 +22,7 @@ interface Props {
   assets: { id: string; name: string; state: string; kind?: string }[];
   evidence: { id: string; title: string; source: string }[];
   investigationStatus: string;
-  assessment: string;
+  assessment?: string;
   decisions: React.ReactNode;
   timeline: React.ReactNode;
   onInspect: (id: string) => void;
@@ -33,6 +33,7 @@ interface Props {
   modelLinks?: ResponseModelLink[];
   modelRunning?: boolean;
   orchestration?: React.ReactNode;
+  communications?: React.ReactNode;
 }
 export function OperationalOverview(p: Props) {
   const [query, setQuery] = useState("");
@@ -101,7 +102,7 @@ export function OperationalOverview(p: Props) {
             <strong>
               Incident at a glance
             </strong>
-            <p>{p.assessment}</p>
+            {p.assessment && <p>{p.assessment}</p>}
             <dl>
               <div>
                 <dt>Assets in scope</dt>
@@ -116,6 +117,11 @@ export function OperationalOverview(p: Props) {
                 <dd>{displayLabel(p.investigationStatus)}</dd>
               </div>
             </dl>
+          </div>
+          <div className="bb-data-impact">
+            <strong>Data impact is not established</strong>
+            <p>Asset health and modeled reachability do not confirm which records were exposed, locked or exfiltrated. Review the cited evidence before describing data loss.</p>
+            <button type="button" className="text-button" onClick={() => p.onNavigate("evidence")}>Review scope evidence →</button>
           </div>
         </section>
         <section className="panel evidence-stack">
@@ -291,6 +297,7 @@ export function OperationalOverview(p: Props) {
         transition={{ duration, ease: [0.23, 1, 0.32, 1] }}
       >
         {p.orchestration}
+        {p.communications}
         <section className="panel">
           <div className="panel-title">
             <h2>Decision queue</h2>

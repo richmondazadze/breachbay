@@ -21,7 +21,7 @@ export function IncidentHeading({ incident, actions }: { incident: Pick<Incident
         </details>
       </div>
       <h1>{incident.title}</h1>
-      <p>{incident.description}</p>
+      <details className="bb-incident-summary"><summary>Incident summary</summary><p>{incident.description}</p></details>
     </div>
     <div className="incident-heading-actions">
       {actions}

@@ -347,3 +347,27 @@ export function Database({ size = 18, ...props }: Props) {
     />
   );
 }
+
+export function Compass({ size = 18, ...props }: Props) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" {...props} dangerouslySetInnerHTML={{ __html: "<g fill=\"none\"><path d=\"M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\r\n<path d=\"M16.24 7.76001L14.436 13.171C14.3378 13.4656 14.1724 13.7333 13.9528 13.9528C13.7333 14.1724 13.4656 14.3378 13.171 14.436L7.76001 16.24L9.56401 10.829C9.66219 10.5344 9.82762 10.2668 10.0472 10.0472C10.2668 9.82762 10.5344 9.66219 10.829 9.56401L16.24 7.76001Z\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></g>" }} />;
+}
+
+export function ClipboardList({ size = 18, ...props }: Props) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" {...props} dangerouslySetInnerHTML={{ __html: "<g fill=\"none\"><path d=\"M16 4H18C18.5304 4 19.0391 4.21071 19.4142 4.58579C19.7893 4.96086 20 5.46957 20 6V20C20 20.5304 19.7893 21.0391 19.4142 21.4142C19.0391 21.7893 18.5304 22 18 22H6C5.46957 22 4.96086 21.7893 4.58579 21.4142C4.21071 21.0391 4 20.5304 4 20V6C4 5.46957 4.21071 4.96086 4.58579 4.58579C4.96086 4.21071 5.46957 4 6 4H8M12 11H16M12 16H16M8 11H8.01M8 16H8.01M9 2H15C15.5523 2 16 2.44772 16 3V5C16 5.55228 15.5523 6 15 6H9C8.44772 6 8 5.55228 8 5V3C8 2.44772 8.44772 2 9 2Z\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></g>" }} />;
+}
+
+export function Layers({ size = 18, ...props }: Props) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" {...props} dangerouslySetInnerHTML={{ __html: "<g fill=\"none\"><g clip-path=\"url(#layouts-layers-2--clip0_1_3467)\">\r\n<path d=\"M20 14.2849L21.5 15.1299C21.6539 15.2171 21.7819 15.3436 21.871 15.4965C21.96 15.6493 22.0069 15.823 22.0069 15.9999C22.0069 16.1768 21.96 16.3505 21.871 16.5034C21.7819 16.6562 21.6539 16.7827 21.5 16.8699L13 21.7399C12.696 21.9154 12.3511 22.0079 12 22.0079C11.6489 22.0079 11.304 21.9154 11 21.7399L2.49999 16.8699C2.34609 16.7827 2.21808 16.6562 2.12902 16.5034C2.03997 16.3505 1.99304 16.1768 1.99304 15.9999C1.99304 15.823 2.03997 15.6493 2.12902 15.4965C2.21808 15.3436 2.34609 15.2171 2.49999 15.1299L3.99999 14.2849M13 13.7399C12.696 13.9154 12.3511 14.0078 12 14.0078C11.6489 14.0078 11.304 13.9154 11 13.7399L2.49999 8.86989C2.34609 8.78267 2.21808 8.65619 2.12902 8.50335C2.03997 8.35051 1.99304 8.17679 1.99304 7.99989C1.99304 7.823 2.03997 7.64927 2.12902 7.49643C2.21808 7.34359 2.34609 7.21711 2.49999 7.12989L11 2.25989C11.304 2.08436 11.6489 1.99194 12 1.99194C12.3511 1.99194 12.696 2.08436 13 2.25989L21.5 7.12989C21.6539 7.21711 21.7819 7.34359 21.871 7.49643C21.96 7.64927 22.0069 7.823 22.0069 7.99989C22.0069 8.17679 21.96 8.35051 21.871 8.50335C21.7819 8.65619 21.6539 8.78267 21.5 8.86989L13 13.7399Z\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\r\n</g>\r\n<defs>\r\n<clipPath id=\"layouts-layers-2--clip0_1_3467\">\r\n<rect width=\"24\" height=\"24\" fill=\"white\"/>\r\n</clipPath>\r\n</defs></g>" }} />;
+}
+
+export function PanelLeft({ size = 18, ...props }: Props) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" {...props} dangerouslySetInnerHTML={{ __html: "<g fill=\"none\"><path d=\"M9 3V21M5 3H19C20.1046 3 21 3.89543 21 5V19C21 20.1046 20.1046 21 19 21H5C3.89543 21 3 20.1046 3 19V5C3 3.89543 3.89543 3 5 3Z\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></g>" }} />;
+}
+
+export function Menu({ size = 18, ...props }: Props) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" {...props} dangerouslySetInnerHTML={{ __html: "<g fill=\"none\"><path d=\"M4 5H20M4 12H20M4 19H20\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></g>" }} />;
+}
+
+export function UserRound({ size = 18, ...props }: Props) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" {...props} dangerouslySetInnerHTML={{ __html: "<g fill=\"none\"><path d=\"M7 20.662V19C7 18.4696 7.21071 17.9609 7.58579 17.5858C7.96086 17.2107 8.46957 17 9 17H15C15.5304 17 16.0391 17.2107 16.4142 17.5858C16.7893 17.9609 17 18.4696 17 19V20.662M22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12ZM15 10C15 11.6569 13.6569 13 12 13C10.3431 13 9 11.6569 9 10C9 8.34315 10.3431 7 12 7C13.6569 7 15 8.34315 15 10Z\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></g>" }} />;
+}

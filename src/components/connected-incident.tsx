@@ -14,11 +14,11 @@ import { ScenarioHistory, CancelInvestigation } from "./scenario-history";
 import { DetailedTwin, type TwinView } from "./detailed-twin";
 import { IncidentLifecycle, ManualProposal, FindingReview, EvidenceRelationship, AcknowledgeControl } from "./incident-operations";
 import { IncidentTeam } from "./incident-team";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence } from "motion/react";
 import { ApplicationFrame, incidentSections } from "./application-frame";
 import { CommandReceipt } from "./command-receipt";
+import { CollaborationFeed, ChatTranscript } from "./collaboration-feed";
 import { displayLabel, responderLabel } from "./ui/labels";
-import { useInterfaceMotion } from "@/hooks/use-interface-motion";
 import { OperationalOverview } from "./operational-overview";
 import { ConnectionStatus, IncidentLoading } from "./connection-status";
 import {
@@ -48,7 +48,15 @@ export function ConnectedIncident({
 }) {
   const state = useIncident(incidentId, client);
   const [tab, setTab] = useState("overview");
-  const uiMotion = useInterfaceMotion();
+  useEffect(() => {
+    const sections = new Set<string>([...incidentSections.map(section => section.id), "graph", "collaboration"]);
+    const fromHash = () => { const section=window.location.hash.slice(1); setTab(sections.has(section) ? section : "overview"); };
+    fromHash();
+    setSelected(null); setMessage(""); setObjective(""); setReason("");
+    setResponseFilter("current"); setEvidenceQuery(""); setEvidenceOrder("captured");
+    window.addEventListener("hashchange", fromHash);
+    return () => window.removeEventListener("hashchange", fromHash);
+  }, [incidentId]);
   const [responseFilter, setResponseFilter] = useState("current");
   const [message, setMessage] = useState("");
   const [objective, setObjective] = useState("");
@@ -169,12 +177,12 @@ export function ConnectedIncident({
   const overviewProposal = currentProposals.find(p=>p.status === "PENDING_APPROVAL") ?? currentProposals[0] ?? proposals[0];
   const visibleProposals = responseFilter === "all" ? proposals : proposals.filter(p=>responseFilter === "history" ? isHistorical(p) : !isHistorical(p));
   return (
-    <ApplicationFrame title="Incident workspace" actions={accountControls} active={tab} onNavigate={setTab} synthetic={s.incident.classification === "SYNTHETIC"}>
+    <ApplicationFrame title={incidentSections.find(section=>section.id===tab)?.label ?? (tab === "graph" ? "Topology & replay" : "Team & collaboration")} actions={accountControls} active={tab} onNavigate={setTab} synthetic={s.incident.classification === "SYNTHETIC"}>
       <ConnectionStatus state={state.connection} />
       <IncidentHeading incident={s.incident} actions={<Button variant="outline" onClick={()=>setTab("reports")}>Reports & export</Button>} />
       {client && <div hidden={tab !== "overview"} className="bb-management"><IncidentLifecycle snapshot={s} client={client} disabled={disabled} canManage={state.capabilities.includes("MANAGE_INCIDENT")} command={state.command} /></div>}
 
-      <nav className="tabs bb-incident-tabs" aria-label="Incident sections">{incidentSections.map(({id,label})=><button type="button" key={id} className={tab===id ? "selected" : ""} aria-current={tab===id ? "page" : undefined} onClick={()=>setTab(id)}>{label}{tab===id && <motion.span className="bb-tab-indicator" layoutId="incident-section-indicator" transition={{duration:uiMotion.duration,ease:[0.23,1,0.32,1]}} />}</button>)}</nav>
+
       {state.error && (
         <div className="impact-warning" role="alert">
           {state.error}
@@ -200,11 +208,11 @@ export function ConnectedIncident({
             modelLinks={s.edges.map(e=>({id:e.id,from:e.fromId,to:e.toId,enabled:e.enabled,verified:e.verificationStatus==="VERIFIED",label:displayLabel(e.type)}))}
             modelRunning={state.connection==="live" && latestInvestigation?.status==="RUNNING"}
             orchestration={latestInvestigation && <InvestigationOrchestration run={latestInvestigation} events={s.streamEvents ?? []} tools={s.toolRuns} evidence={s.evidence} onInspect={setSelected} connected={state.connection==="live"} compact />}
+            communications={<CollaborationFeed compact messages={s.messages.map(m=>({id:m.id,incidentId:m.incidentId,text:m.text,createdAt:m.createdAt,authorId:m.authorId,authorLabel:responderLabel(m.authorId,s.memberships,state.session?.user.id)}))} confirmed={state.connection==="live"} onOpenChat={()=>setTab("collaboration")}/>}
             evidence={s.evidence}
             investigationStatus={
               latestInvestigation?.status ?? "No runs requested"
             }
-            assessment={s.incident.description}
             onInspect={setSelected}
             onNavigate={(t) => setTab(t === "twin" ? "graph" : t)}
             decisions={
@@ -472,18 +480,9 @@ export function ConnectedIncident({
       {tab === "collaboration" && (
         <div className="warroom-grid">
           <section className="panel chat">
-            <h2>War room</h2>
-            {s.messages.map((m) => (
-              <div className="chat-message" key={m.id}>
-                <div>
-                  <strong>{responderLabel(m.authorId,s.memberships,state.session?.user.id)}</strong>
-                  <details className="small"><summary>Responder identity</summary><code>{m.authorId}</code></details>
-                  <small>{m.createdAt}</small>
-                  <p>{m.text}</p>
-                  {client && <AcknowledgeControl snapshot={s} objectId={m.id} userId={state.session?.user.id} client={client} disabled={disabled || !state.capabilities.includes("COLLABORATE")} command={state.command} />}
-                </div>
-              </div>
-            ))}
+            <h2>Incident war room</h2>
+            <p className="bb-section-description">Share observations and coordinate the next decision. Messages appear after the server records them.</p>
+            <ChatTranscript messages={s.messages.map(m=>({id:m.id,incidentId:m.incidentId,text:m.text,createdAt:m.createdAt,authorId:m.authorId,authorLabel:responderLabel(m.authorId,s.memberships,state.session?.user.id)}))} renderControls={id=>client && <AcknowledgeControl snapshot={s} objectId={id} userId={state.session?.user.id} client={client} disabled={disabled || !state.capabilities.includes("COLLABORATE")} command={state.command} />}/>
             <label className="field-label">
               Message
               <textarea

@@ -14,6 +14,7 @@ import { currentConnectionCallback } from "@/hooks/connection-callback";
 import { subscriptionFailureMessage } from "@/hooks/subscription-failure";
 import { ApplicationFrame } from "../application-frame";
 import { MissionDashboard, type MissionActivity } from "../mission-dashboard";
+import type { CollaborationMessage } from "../collaboration-feed";
 import { CommandReceipt } from "../command-receipt";
 import { displayLabel } from "../ui/labels";
 import { Button } from "../ui/button";
@@ -45,6 +46,7 @@ function CommandList() {
     }[]
   >([]);
   const [activity, setActivity] = useState<MissionActivity[]>([]);
+  const [messages, setMessages] = useState<CollaborationMessage[]>([]);
   const [responders, setResponders] = useState<{userId: string; role: string}[]>([]);
   const [profile, setProfile] = useState<User | null>(null);
   const [canCreate, setCanCreate] = useState(false);
@@ -66,6 +68,7 @@ function CommandList() {
     setReceipt("");
     setAuthenticationError(null);
     setIncidents([]);
+    setMessages([]);
       setActivity([]);
       setResponders([]);
     setInvitations([]);
@@ -77,6 +80,7 @@ function CommandList() {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const clear = () => {
       setIncidents([]);
+      setMessages([]);
       setActivity([]);
       setResponders([]);
       setInvitations([]);
@@ -106,6 +110,14 @@ function CommandList() {
       const tasks = [...conn.db.scopedTasks.iter()];
       const proposals = [...conn.db.scopedProposals.iter()];
       const audits = [...conn.db.scopedAuditEvents.iter()];
+      const scopedIncidents = [...conn.db.scopedIncidents.iter()];
+      const memberships = [...conn.db.scopedMemberships.iter()];
+      const incidentNames = new Map(scopedIncidents.map(i => [i.id, i.title]));
+      setMessages([...conn.db.scopedMessages.iter()].filter(m => incidentNames.has(m.incidentId)).map(m => {
+        const membership = memberships.find(member => member.incidentId === m.incidentId && member.userId === m.authorId && member.active)
+          ?? memberships.find(member => member.incidentId === m.incidentId && member.userId === m.authorId);
+        return {id:m.id,incidentId:m.incidentId,text:m.text,createdAt:m.createdAt,incidentTitle:incidentNames.get(m.incidentId),authorLabel:m.authorId === profile.id ? "You" : membership ? displayLabel(membership.role) : "Incident participant"};
+      }));
       setActivity(audits);
       setResponders([...conn.db.scopedMemberships.iter()].filter(m=>m.active && m.role!=="AI_SERVICE").filter((m,index,rows)=>rows.findIndex(row=>row.userId===m.userId && row.role===m.role)===index).map(m=>({userId:m.userId,role:m.role})));
       setIncidents([...conn.db.scopedIncidents.iter()].map(incident => {
@@ -262,7 +274,7 @@ function CommandList() {
       {error && <p className="workflow-error" role="alert">{error}</p>}
       {receipt && <CommandReceipt receipt={receipt} />}
       <AuthenticationRecovery error={authenticationError} />
-      <MissionDashboard incidents={incidents} activity={activity} responders={responders} confirmed={status === "Server-confirmed scoped incidents"}
+      <MissionDashboard incidents={incidents} activity={activity} responders={responders} messages={messages} confirmed={status === "Server-confirmed scoped incidents"}
         createControl={<Button disabled={disabled || !canCreate} onClick={()=>setShowCreate(!showCreate)}>{showCreate ? "Close incident form" : "Create incident"}</Button>}
         createForm={showCreate ? (
           <form

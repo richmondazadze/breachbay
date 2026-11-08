@@ -95,6 +95,18 @@ export interface Incident {
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
 }
+/** Preservation settings only. No automatic cleanup or purge is implemented. */
+export interface IncidentRetentionPolicy {
+  id: Id;
+  incidentId: Id;
+  indefinite: boolean;
+  minimumRetentionDays: number;
+  hold: boolean;
+  /** Zero denotes the conservative default for a legacy incident with no saved policy. */
+  version: number;
+  updatedBy?: Id;
+  updatedAt?: ISODateTime;
+}
 export interface Asset {
   id: Id;
   incidentId: Id;
@@ -367,6 +379,16 @@ export interface CommandMeta {
   correlationId: string;
   expectedVersion?: number;
 }
+export interface SetIncidentRetentionPolicyCommand extends CommandMeta {
+  incidentId: Id;
+  indefinite: boolean;
+  /** Integer from 1 through 3650, retained even when indefinite preservation is selected. */
+  minimumRetentionDays: number;
+  hold: boolean;
+  /** The subscribed policy revision, independent of incident/scenario versions. */
+  expectedVersion: number;
+  reason: string;
+}
 export interface CreateIncidentCommand extends CommandMeta {
   title: string;
   description: string;
@@ -440,6 +462,7 @@ export interface AssignTaskCommand extends CommandMeta {
 }
 export interface IncidentSnapshot {
   incident: Incident;
+  retentionPolicy?: IncidentRetentionPolicy;
   memberships: Membership[];
   assets: Asset[];
   evidence: Evidence[];
@@ -464,6 +487,7 @@ export interface IncidentSnapshot {
 }
 export type InvestigationEventType =
   | "run_started"
+  | ProviderCallEventType
   | "tool_started"
   | "tool_completed"
   | "tool_failed"
@@ -472,6 +496,32 @@ export type InvestigationEventType =
   | "run_completed"
   | "run_failed"
   | "run_cancelled";
+export const PROVIDER_CALL_EVENT_TYPES = ["provider_call_started", "provider_call_completed", "provider_call_failed"] as const;
+export type ProviderCallEventType = (typeof PROVIDER_CALL_EVENT_TYPES)[number];
+/** Persisted in stream dataJson. Counts are omitted when the provider did not supply them. */
+export interface ProviderCallEventData {
+  providerCallId: string; // App-generated UUID, shared by start and terminal events.
+  step: number; // Zero-based provider iteration, 0..7.
+  mode: "tools" | "final_json";
+  endpoint: string; // Normalized actual HTTPS URL; no credentials, query, or fragment.
+  classification: Classification;
+  usageSource: "reported" | "estimated" | "unavailable";
+  outcome: "started" | "completed" | "failed";
+  durationMs?: number; // Required for terminal events, 0..120000.
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  usageEstimate?: {
+    promptTokensUpperBound: number;
+    completionTokensUpperBound: number;
+    totalTokensUpperBound: number;
+    method: "UTF8_REQUEST_BYTES_PLUS_OVERHEAD";
+    basis: "REQUEST_BUDGET_CEILING";
+  }; // Separate request budget ceiling; never actual token consumption.
+  monetaryCost: "UNKNOWN"; // No pricing estimate is available in this implementation.
+  finishReason?: "stop" | "tool_calls" | "length" | "content_filter" | "function_call" | "unknown";
+  code?: ErrorCode; // Required for failed calls; no raw provider error text.
+}
 export interface InvestigationStreamEvent {
   dataJson?: string;
   type: InvestigationEventType;

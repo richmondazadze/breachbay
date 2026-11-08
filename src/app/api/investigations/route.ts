@@ -1,10 +1,9 @@
 import { getCanonicalRunId, getInvestigationAbortSignal, getRecoveredInvestigationResult, installInvestigationGateway } from '../../../lib/backend/investigation-gateway';
-import { authFailure, canonicalInvestigationResult, recoverOrInvestigate } from '../../../lib/ai/http-result';
+import { investigationFailure, canonicalInvestigationResult, recoverOrInvestigate } from '../../../lib/ai/http-result';
 import { randomUUID } from 'node:crypto';
 import type { StartInvestigationCommand } from '../../../lib/contracts';
 import { getInvestigationGateway } from '../../../lib/ai/gateway';
 import { investigate } from '../../../lib/ai/investigation';
-import { AIError } from '../../../lib/ai/nemotron';
 export const runtime = 'nodejs';
 export const maxDuration = 120;
 export async function POST(request: Request) {
@@ -31,9 +30,7 @@ export async function POST(request: Request) {
     if (!canonicalRunId) return error('DEPENDENCY_UNAVAILABLE', 'Canonical investigation identity unavailable', 503);
     return Response.json({ ok: true, data: canonicalInvestigationResult(result, canonicalRunId), correlationId });
   } catch (cause) {
-    const authError = authFailure(cause);
-    if (authError) return error(authError.code, authError.message, authError.status);
-    const code = cause instanceof AIError ? cause.code : 'DEPENDENCY_UNAVAILABLE';
-    return error(code, cause instanceof AIError ? cause.message : 'Investigation backend request failed', code === 'FORBIDDEN' ? 403 : code === 'INVALID_MODEL_OUTPUT' ? 422 : code === 'RATE_LIMITED' ? 429 : 503);
+    const failure = investigationFailure(cause);
+    return error(failure.code, failure.message, failure.status);
   }
 }

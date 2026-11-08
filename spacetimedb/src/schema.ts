@@ -180,6 +180,19 @@ export const incidents = table(
     updatedAt: t.string(),
   },
 );
+// New private table: existing deployed layouts and retained records remain unchanged.
+export const incidentRetentionPolicies = table(
+  { name: "incident_retention_policies" },
+  {
+    ...scope(),
+    indefinite: t.bool(),
+    minimumRetentionDays: t.u32(),
+    hold: t.bool(),
+    version: t.u32(),
+    updatedBy: t.option(t.string()),
+    updatedAt: t.option(t.string()),
+  },
+);
 export const assets = table(
   { name: "assets" },
   {
@@ -458,6 +471,7 @@ const db = schema(
     incidentMembers,
     invitations,
     incidents,
+    incidentRetentionPolicies,
     assets,
     evidence,
     evidenceStorage,

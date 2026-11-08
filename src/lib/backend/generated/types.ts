@@ -196,6 +196,18 @@ export const IncidentReports = __t.object("IncidentReports", {
 });
 export type IncidentReports = __Infer<typeof IncidentReports>;
 
+export const IncidentRetentionPolicies = __t.object("IncidentRetentionPolicies", {
+  id: __t.string(),
+  incidentId: __t.string(),
+  indefinite: __t.bool(),
+  minimumRetentionDays: __t.u32(),
+  hold: __t.bool(),
+  version: __t.u32(),
+  updatedBy: __t.option(__t.string()),
+  updatedAt: __t.option(__t.string()),
+});
+export type IncidentRetentionPolicies = __Infer<typeof IncidentRetentionPolicies>;
+
 export const Incidents = __t.object("Incidents", {
   id: __t.string(),
   incidentId: __t.string(),
@@ -492,6 +504,11 @@ export const ScopedReports = __t.object("ScopedReports", {
   lease: __t.string(),
 });
 export type ScopedReports = __Infer<typeof ScopedReports>;
+
+export const ScopedRetentionPolicies = __t.object("ScopedRetentionPolicies", {
+  lease: __t.string(),
+});
+export type ScopedRetentionPolicies = __Infer<typeof ScopedRetentionPolicies>;
 
 export const ScopedScenarioHistory = __t.object("ScopedScenarioHistory", {
   lease: __t.string(),

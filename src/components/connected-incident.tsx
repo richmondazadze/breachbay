@@ -5,12 +5,15 @@ import { ResponsePlanning } from "./response-planning";
 import { GraphRelationshipReview } from "./graph-relationship-review";
 import { IncidentHeading } from "./incident-heading";
 import { InvestigationTrace } from "./investigation-trace";
+import { IncidentTimeline } from "./incident-timeline";
+import { IncidentDetails } from "./incident-details";
+import { IncidentRetention } from "./incident-retention";
+import { sortAuditEvents } from "@/hooks/audit-presentation";
 import { ScenarioHistory, CancelInvestigation } from "./scenario-history";
 import { DetailedTwin, type TwinView } from "./detailed-twin";
 import { IncidentLifecycle, ManualProposal, FindingReview, EvidenceRelationship, AcknowledgeControl } from "./incident-operations";
 import { IncidentTeam } from "./incident-team";
-import { motion, AnimatePresence } from "motion/react";
-import { useInterfaceMotion } from "@/hooks/use-interface-motion";
+import { AnimatePresence } from "motion/react";
 import {
   LayoutDashboard,
   Network,
@@ -28,9 +31,6 @@ import {
 } from "./decision-details";
 import { useState, useRef, useEffect } from "react";
 import {
-  ReactFlow,
-  Background,
-  Controls,
   type Node,
   type Edge,
 } from "@xyflow/react";
@@ -46,7 +46,6 @@ export function ConnectedIncident({
   incidentId: string;
   client?: IncidentClient;
 }) {
-  const uiMotion = useInterfaceMotion();
   const state = useIncident(incidentId, client);
   const [tab, setTab] = useState("overview");
   const [message, setMessage] = useState("");
@@ -59,7 +58,7 @@ export function ConnectedIncident({
   const uploadAttempt = useRef<EvidenceUploadCommand | null>(null);
   const reportAttempt = useRef<CommandMeta | null>(null);
   useEffect(() => {
-    const clearTransfers = () => { uploadAttempt.current = null; reportAttempt.current = null; setTwinView({positions:{},pinned:[]}); };
+    const clearTransfers = () => { uploadAttempt.current = null; reportAttempt.current = null; setTwinView({positions:{},pinned:[]}); setSelected(null); };
     window.addEventListener("breachbay-session-ending", clearTransfers);
     return () => { clearTransfers(); window.removeEventListener("breachbay-session-ending", clearTransfers); };
   }, [incidentId, client]);
@@ -127,6 +126,7 @@ export function ConnectedIncident({
     );
   const nodes: Node[] = s.assets.map((a, i) => ({
     id: a.id,
+    ariaLabel: `${a.name} · ${a.type} · ${a.state} · ${a.criticality} criticality`,
     position: { x: (i % 3) * 230, y: Math.floor(i / 3) * 150 },
     data: {
       label: (
@@ -162,8 +162,8 @@ export function ConnectedIncident({
     ...s.indicators.filter(i=>linkedIds.has(i.id)).map(i=>({id:i.id,name:`${i.kind} ${i.normalizedValue}`,kind:"Indicator"})),
     ...s.proposals.filter(p=>linkedIds.has(p.id)).map(p=>({id:p.id,name:p.action.type,kind:"Proposal"})),
   ].map((n,i)=>({id:n.id,position:{x:(i%3)*230,y:(Math.ceil(s.assets.length/3)+Math.floor(i/3))*150},ariaLabel:`${n.kind} · ${n.name}`,data:{label:<div className="graph-node"><strong>{n.name}</strong><small>{n.kind}</small></div>},style:{width:180}}));
-  const entity = s.evidence.find((e) => e.id === selected);
-  const asset = s.assets.find((a) => a.id === selected);
+  const latestInvestigation = [...s.investigations].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.id.localeCompare(b.id)).at(-1);
+  const latestSimulation = [...s.simulations].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.id.localeCompare(b.id)).at(-1);
   return (
     <main className="connected-main live-command">
       <aside className="live-rail">
@@ -184,6 +184,7 @@ export function ConnectedIncident({
                 key={String(id)}
                 className={tab === id ? "rail-button active" : "rail-button"}
                 aria-label={String(label)}
+                aria-current={tab === id ? "page" : undefined}
                 title={String(label)}
                 onClick={() => setTab(String(id))}
               >
@@ -199,6 +200,7 @@ export function ConnectedIncident({
       <ConnectionStatus state={state.connection} />
       <IncidentHeading incident={s.incident} actions={client ? <ProtectedDownloadControl client={client} incidentId={incidentId} reportAttempt={reportAttempt} disabled={disabled || !state.capabilities.includes("EXPORT")} /> : undefined} />
       {client && <IncidentLifecycle snapshot={s} client={client} disabled={disabled} canManage={state.capabilities.includes("MANAGE_INCIDENT")} command={state.command} />}
+      {client && <IncidentRetention key={incidentId} snapshot={s} userId={state.session?.user.id} client={client} disabled={disabled} command={state.command} />}
       <nav className="tabs" aria-label="Incident sections">
         {[
           "overview",
@@ -209,6 +211,7 @@ export function ConnectedIncident({
         ].map((t) => (
           <button
             className={tab === t ? "selected" : ""}
+            aria-current={tab === t ? "page" : undefined}
             key={t}
             onClick={() => setTab(t)}
           >
@@ -232,7 +235,7 @@ export function ConnectedIncident({
           <OperationalOverview
             nodes={nodes}
             edges={edges}
-            containmentCoverage={s.simulations.at(-1)?.diff.containmentCoverage}
+            containmentCoverage={latestSimulation?.diff.containmentCoverage}
             assets={s.assets.map((a) => ({
               id: a.id,
               name: a.name,
@@ -240,7 +243,7 @@ export function ConnectedIncident({
             }))}
             evidence={s.evidence}
             investigationStatus={
-              s.investigations.at(-1)?.status ?? "No runs requested"
+              latestInvestigation?.status ?? "No runs requested"
             }
             assessment={s.incident.description}
             onInspect={setSelected}
@@ -268,13 +271,14 @@ export function ConnectedIncident({
             }
             timeline={
               <div className="timeline">
-                {s.auditEvents.slice(-4).map((e) => (
+                {sortAuditEvents(s.auditEvents).slice(-4).map((e) => (
                   <div key={e.id} className="chronology-event">
                     <strong>{e.verb}</strong>
-                    <small>{e.createdAt}</small>
+                    <small><time dateTime={e.createdAt}>{e.createdAt}</time></small>
                     <p>{e.detail}</p>
                   </div>
                 ))}
+                <a className="text-button" href="#server-audit-timeline">Filter the server audit timeline →</a>
               </div>
             }
           />
@@ -401,25 +405,7 @@ export function ConnectedIncident({
                 );
               })}
             </section>
-            <section className="panel">
-              <div className="panel-title">
-                <h2>Server audit timeline</h2>
-              </div>
-              <div className="timeline">
-                {s.auditEvents.map((e) => (
-                  <div className="timeline-row" key={e.id}>
-                    <time>{new Date(e.createdAt).toISOString()}</time>
-                    <div>
-                      <strong>{e.verb}</strong>
-                      <p>{e.detail}</p>
-                      <small>
-                        {e.actorId} · {e.correlationId}
-                      </small>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
+            <IncidentTimeline key={incidentId} snapshot={s} onInspect={setSelected} />
           </div>
         </>
       )}
@@ -605,66 +591,9 @@ export function ConnectedIncident({
           />
         )}
         {selected && (
-          <motion.aside
-            key="detail"
-            className="detail-panel"
-            aria-label="Selected evidence and asset details"
-            initial={
-              uiMotion.instant
-                ? false
-                : { opacity: 0, transform: "translateX(24px)" }
-            }
-            animate={{ opacity: 1, transform: "translateX(0px)" }}
-            exit={{
-              opacity: 0,
-              transform: uiMotion.instant
-                ? "translateX(0px)"
-                : "translateX(24px)",
-            }}
-            transition={{
-              duration: uiMotion.duration,
-              ease: [0.32, 0.72, 0, 1],
-            }}
-          >
-            <Button variant="outline" onClick={() => setSelected(null)}>
-              Close details
-            </Button>
-            <h2>{entity?.title ?? asset?.name ?? selected}</h2>
-            {entity ? (
-              <>
-                <p>
-                  {entity.source} · {entity.classification}
-                </p>
-                <p>Captured {entity.capturedAt}</p>
-                {client && entity.classification === "SYNTHETIC" && <ProtectedDownloadControl key={entity.id} client={client} incidentId={incidentId} evidenceId={entity.id} disabled={disabled || !state.capabilities.includes("READ") || !s.memberships.some(m=>m.active && m.userId===state.session?.user.id && m.role!=="AI_SERVICE")} />}
-                <pre className="evidence-content">{entity.redactedContent}</pre>
-                <p className="small">Original SHA-256: {entity.sha256}</p>
-                <p className="small">
-                  Derivative SHA-256: {entity.redactedSha256}
-                </p>
-                <p>
-                  Approved for model use: {entity.modelApproved ? "Yes" : "No"}
-                </p>
-              </>
-            ) : (
-              <>
-                <p>
-                  {asset?.type} · {asset?.state}
-                </p>
-                {s.edges
-                  .filter((e) => e.fromId === selected || e.toId === selected)
-                  .map((e) => (
-                    <p key={e.id}>
-                      {e.type} · {e.verificationStatus} · {e.confidence}
-                      <small>
-                        Evidence: {e.sourceEvidenceIds.join(", ")} · asserted by{" "}
-                        {e.assertedBy}
-                      </small>
-                    </p>
-                  ))}
-              </>
-            )}
-          </motion.aside>
+          <IncidentDetails key="detail" snapshot={s} selected={selected} client={client}
+            downloadDisabled={disabled || !state.capabilities.includes("READ") || !s.memberships.some(m => m.active && m.userId === state.session?.user.id && m.role !== "AI_SERVICE")}
+            onInspect={setSelected} onDismiss={() => setSelected(null)} />
         )}
       </AnimatePresence>
     </main>

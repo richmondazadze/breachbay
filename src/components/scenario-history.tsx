@@ -7,6 +7,7 @@ import { scenarioReplay, type ReplayView } from "@/hooks/scenario-replay";
 import { scenarioFromSnapshot } from "@/lib/simulation/contracts-adapter";
 import type { RunCommand } from "./incident-operations";
 import { Button } from "./ui/button";
+import { ExecutionReplay } from "./execution-replay";
 const meta=(incidentId:string)=>({incidentId,idempotencyKey:crypto.randomUUID(),correlationId:crypto.randomUUID()});
 export function ScenarioComparison({ replay, snapshot }: { replay: ReplayView; snapshot: IncidentSnapshot }) {
   let current: ReturnType<typeof scenarioFromSnapshot>;
@@ -35,7 +36,7 @@ export function ScenarioHistory({snapshot:s,client,disabled,canRead,canRestore,c
   const target=history.find(h=>h.id===selected);
   const allowed=canRestore && s.incident.classification==="SYNTHETIC" && ["INVESTIGATING","CONTAINMENT_PENDING","CONTAINING"].includes(s.incident.status);
   return <details className="panel decision-body scenario-history"><summary>Synthetic scenario history · current v{s.incident.scenarioVersion}</summary>
-    <p className="small">Replay is read-only. Restoration applies saved synthetic state as a new version; it preserves evidence, approvals and audit history. Earlier approvals remain historical and do not authorize the new version.</p>
+    <p className="small">Snapshot inspection is read-only. Recorded executions can also be replayed from their exact saved parent and action. Restoration applies saved synthetic state as a new version; it preserves evidence, approvals and audit history. Earlier approvals remain historical and do not authorize the new version.</p>
     <Button variant="outline" disabled={disabled || !canRead} onClick={()=>void command(()=>client.checkpointScenario(meta(s.incident.id)))}>Checkpoint current state</Button>
     {!history.length?<p className="small">No saved checkpoints available. Older versions cannot be reconstructed if they were never recorded.</p>:<label className="field-label">Recorded snapshot<select value={selected} disabled={disabled || !canRead || loading} onChange={async e=>{
       const id=e.target.value;setSelected(id);setReplay(null);setReason("");setError("");const sequence=++request.current;if(!id)return;
@@ -45,6 +46,7 @@ export function ScenarioHistory({snapshot:s,client,disabled,canRead,canRestore,c
     {loading && <p role="status">Reading authorized snapshot…</p>}{error && <p role="alert" className="impact-warning">{error}</p>}
     <AuthenticationRecovery error={authenticationError} />
     {target && <p className="small">Snapshot {target.id} · state SHA-256 {target.stateDigest}</p>}
+    {target && replay && <ExecutionReplay key={target.id} snapshot={s} target={target} client={client} disabled={disabled} canRead={canRead} />}
     {replay && <><ScenarioComparison replay={replay} snapshot={s} /><p className="small">{replay.edges.filter(e=>e.enabled).length} enabled saved communication/dependency links. The saved version represents historical synthetic state.</p>
       <label className="field-label">Restoration reason<textarea maxLength={2000} disabled={disabled || !allowed} value={reason} onChange={e=>setReason(e.target.value)}/></label>
       <Button disabled={disabled || !allowed || !reason.trim()} onClick={()=>void command(()=>client.restoreScenario({...meta(s.incident.id),snapshotId:selected,reason:reason.trim(),expectedVersion:s.incident.scenarioVersion}))}>Restore saved state as new version after v{s.incident.scenarioVersion}</Button>

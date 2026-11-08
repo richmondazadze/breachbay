@@ -31,4 +31,4 @@ if ! BREACHBAY_TEST_ENDPOINT="http://127.0.0.1:$port" BREACHBAY_TEST_DATABASE="$
   spacetime logs --server "http://127.0.0.1:$port" --no-config "$database" --num-lines 12
   exit 1
 fi
-node_modules/.bin/tsx src/lib/backend/tests/clerk-security.ts
+if [[ "${BREACHBAY_SECURITY_SMOKE_SCOPE:-}" != "completion-gaps" ]]; then node_modules/.bin/tsx src/lib/backend/tests/clerk-security.ts; fi

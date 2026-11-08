@@ -73,7 +73,9 @@ test('HTTP mapping preserves authentication errors and canonical investigation I
   const { AuthError } = await import('../../src/lib/backend/clerk-token');
   const { authFailure, canonicalInvestigationResult } = await import('../../src/lib/ai/http-result');
   for (const [code, status] of [['UNAUTHENTICATED', 401], ['FORBIDDEN', 403], ['DEPENDENCY_UNAVAILABLE', 503]] as const) {
-    assert.deepEqual(authFailure(new AuthError(code, 'Controlled failure')), { code, message: 'Controlled failure', status });
+    const failure = authFailure(new AuthError(code, 'Controlled failure'))!;
+    assert.equal(failure.code, code); assert.equal(failure.status, status);
+    assert(failure.message.length > 0 && failure.message !== 'Controlled failure');
   }
   assert.equal(authFailure(new Error('Other error')), undefined);
   assert.deepEqual(canonicalInvestigationResult({ runId: 'internal-random-id', findings: [] }, 'db-run-id'), { id: 'db-run-id', runId: 'db-run-id', findings: [] });

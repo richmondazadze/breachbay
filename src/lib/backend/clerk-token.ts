@@ -1,8 +1,9 @@
 /** Pure verification of dedicated Clerk session JWTs; issuer/origin are public configuration. */
 import { createRemoteJWKSet, jwtVerify } from "jose";
+import type { ErrorCode } from "../contracts";
 export class AuthError extends Error {
   constructor(
-    public code: "UNAUTHENTICATED" | "FORBIDDEN" | "DEPENDENCY_UNAVAILABLE",
+    public code: ErrorCode,
     message: string,
   ) {
     super(message);

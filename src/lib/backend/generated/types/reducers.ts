@@ -30,6 +30,7 @@ import RecordInvestigationEventReducer from "../record_investigation_event_reduc
 import RecordToolRunReducer from "../record_tool_run_reducer";
 import RestoreScenarioReducer from "../restore_scenario_reducer";
 import ReviewGraphEdgeReducer from "../review_graph_edge_reducer";
+import SetIncidentRetentionPolicyReducer from "../set_incident_retention_policy_reducer";
 import SetMemberReducer from "../set_member_reducer";
 import SetUserStatusReducer from "../set_user_status_reducer";
 import SimulateActionReducer from "../simulate_action_reducer";
@@ -60,6 +61,7 @@ export type RecordInvestigationEventParams = __Infer<typeof RecordInvestigationE
 export type RecordToolRunParams = __Infer<typeof RecordToolRunReducer>;
 export type RestoreScenarioParams = __Infer<typeof RestoreScenarioReducer>;
 export type ReviewGraphEdgeParams = __Infer<typeof ReviewGraphEdgeReducer>;
+export type SetIncidentRetentionPolicyParams = __Infer<typeof SetIncidentRetentionPolicyReducer>;
 export type SetMemberParams = __Infer<typeof SetMemberReducer>;
 export type SetUserStatusParams = __Infer<typeof SetUserStatusReducer>;
 export type SimulateActionParams = __Infer<typeof SimulateActionReducer>;

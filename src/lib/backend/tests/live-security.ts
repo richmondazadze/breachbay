@@ -139,6 +139,8 @@ async function main() {
             "SELECT * FROM my_profile",
             "SELECT * FROM my_receipts",
             "SELECT * FROM scoped_incidents",
+            "SELECT * FROM scoped_retention_policies",
+            "SELECT * FROM scoped_reports",
             "SELECT * FROM scoped_memberships",
             "SELECT * FROM scoped_evidence",
             "SELECT * FROM scoped_investigations",
@@ -265,6 +267,92 @@ async function main() {
   console.log(
     "PASS real incident-scoped views, separate authenticated users, outsider isolation",
   );
+  if(process.env.BREACHBAY_SECURITY_SMOKE_SCOPE==="completion-gaps"){
+    const retained = () => JSON.stringify({incident:[...a.db.scopedIncidents.iter()].find(i=>i.id===incidentId),evidence:[...a.db.scopedEvidence.iter()].filter(e=>e.incidentId===incidentId),assets:[...a.db.scopedAssets.iter()].filter(e=>e.incidentId===incidentId),edges:[...a.db.scopedEdges.iter()].filter(e=>e.incidentId===incidentId),scenarios:[...a.db.scopedScenarios.iter()].filter(e=>e.incidentId===incidentId),history:[...a.db.scopedScenarioHistory.iter()].filter(e=>e.incidentId===incidentId),proposals:[...a.db.scopedProposals.iter()].filter(e=>e.incidentId===incidentId),verifications:[...a.db.scopedVerifications.iter()].filter(e=>e.incidentId===incidentId)});
+    const policy = () => [...a.db.scopedRetentionPolicies.iter()].find(p=>p.incidentId===incidentId)!;
+    await eventually(()=>Boolean(policy()),"Initial retention policy missing");
+    assert.equal(policy().indefinite,true);assert.equal(policy().minimumRetentionDays,30);assert.equal(policy().hold,false);assert.equal(policy().version,1);assert.equal(policy().updatedBy,getUser(a));
+    await eventually(()=>[...b.db.scopedRetentionPolicies.iter()].some(p=>p.incidentId===incidentId),"Scoped reader did not receive retention settings");
+    assert(![...x.db.scopedRetentionPolicies.iter()].some(p=>p.incidentId===incidentId));
+    const before=retained();
+    const change={...meta(),incidentId,indefinite:false,minimumRetentionDays:90,hold:true,expectedVersion:1,reason:"Synthetic case preservation review"};
+    for(const denied of [b,o,service,x,admin.connection])await assert.rejects(denied.reducers.setIncidentRetentionPolicy(change),/FORBIDDEN/);
+    const stale=(await connect("alice","breachbay-test",1200)).connection;
+    await assert.rejects(stale.reducers.setIncidentRetentionPolicy(change),/UNAUTHENTICATED/);
+    for(const minimumRetentionDays of [0,3651])await assert.rejects(a.reducers.setIncidentRetentionPolicy({...change,...meta(),minimumRetentionDays}),/INVALID_INPUT/);
+    await assert.rejects(a.reducers.setIncidentRetentionPolicy({...change,...meta(),reason:" "}),/INVALID_INPUT/);
+    const policyId=await result(a,()=>a.reducers.setIncidentRetentionPolicy(change),change);
+    assert.equal(policyId,incidentId);
+    await eventually(()=>policy().version===2,"Retention change not subscribed");
+    assert.equal(policy().hold,true);assert.equal(policy().indefinite,false);assert.equal(policy().minimumRetentionDays,90);
+    const receipt=[...a.db.myReceipts.iter()].find(r=>r.correlationId===change.correlationId)!;
+    const audits=[...a.db.scopedAuditEvents.iter()].filter(e=>e.verb==="setIncidentRetentionPolicy");
+    const changeAudit=audits.find(e=>e.id===receipt.auditEventId)!;
+    const detail=JSON.parse(changeAudit.detail);assert.equal(detail.before.version,1);assert.equal(detail.after.version,2);assert.equal(detail.after.hold,true);assert.equal(detail.automaticDeletionImplemented,false);
+    await a.reducers.setIncidentRetentionPolicy(change);
+    assert.equal(policy().version,2);assert.equal([...a.db.scopedAuditEvents.iter()].filter(e=>e.verb==="setIncidentRetentionPolicy").length,audits.length);
+    await assert.rejects(a.reducers.setIncidentRetentionPolicy({...change,...meta()}),/VERSION_CONFLICT/);
+    await assert.rejects(a.reducers.setIncidentRetentionPolicy({...change,minimumRetentionDays:120}),/IDEMPOTENCY_CONFLICT/);
+    assert.equal(retained(),before,"Settings changed retained incident/evidence/scenario/action state");
+    console.log("PASS scoped human/recent-auth retention policy, bounds, immutable retained state, version/key conflicts and before/after audited receipt");
+
+    let v=[...a.db.scopedIncidents.iter()].find(i=>i.id===incidentId)!.version;
+    for(const status of ["TRIAGED","INVESTIGATING"]){await a.reducers.transitionIncident({...meta(),incidentId,status,reason:"Synthetic report fidelity preparation",expectedVersion:v});v++;}
+    const evidenceId=[...a.db.scopedEvidence.iter()].find(e=>e.incidentId===incidentId && e.modelApproved)!.id;
+    const assetId=[...a.db.scopedAssets.iter()].find(e=>e.incidentId===incidentId)!.id;
+    const proposalMeta=meta();
+    const proposalId=await result(b,()=>b.reducers.proposeAction({...proposalMeta,incidentId,investigationId:undefined,action:{type:"ISOLATE_SIMULATED_HOST",targetIds:[assetId]},rationale:"Synthetic manual proposal",evidenceIds:[evidenceId],assumptions:["Manual assumption"],uncertainty:["Manual unresolved question"],planningJson:undefined,expectedVersion:1}),proposalMeta);
+    const runMeta=meta();
+    const runId=await result(b,()=>b.reducers.startInvestigation({...runMeta,incidentId,objective:"Synthetic provider metadata and report validation"}),runMeta);
+    await service.reducers.recordInvestigationEvent({...meta(),incidentId,runId,type:"run_started",provider:"SYNTHETIC_TEST",model:"synthetic-model",tool:undefined,summary:undefined,dataJson:undefined});
+    const call={providerCallId:randomUUID(),step:0,mode:"tools",endpoint:"https://example.invalid/v1/chat/completions",classification:"SYNTHETIC",usageSource:"estimated",monetaryCost:"UNKNOWN",outcome:"started",usageEstimate:{promptTokensUpperBound:1000,completionTokensUpperBound:100,totalTokensUpperBound:1100,method:"UTF8_REQUEST_BYTES_PLUS_OVERHEAD",basis:"REQUEST_BUDGET_CEILING"}};
+    const event=(type:string,data:unknown)=>({...meta(),incidentId,runId,type,provider:"SYNTHETIC_TEST",model:"synthetic-model",tool:undefined,summary:undefined,dataJson:JSON.stringify(data)});
+    await assert.rejects(b.reducers.recordInvestigationEvent(event("provider_call_started",call)),/FORBIDDEN/);
+    await assert.rejects(service.reducers.recordInvestigationEvent(event("provider_call_completed",{...call,outcome:"completed",durationMs:10})),/INVALID_TRANSITION/);
+    await assert.rejects(service.reducers.recordInvestigationEvent(event("provider_call_started",{...call,classification:"RESTRICTED"})),/EVIDENCE_REDACTED/);
+    const callStart=event("provider_call_started",{...call,prompt:"private synthetic prompt",headers:{token:"private synthetic token"}});
+    await service.reducers.recordInvestigationEvent(callStart);
+    await service.reducers.recordInvestigationEvent(callStart);
+    await assert.rejects(service.reducers.recordInvestigationEvent(event("provider_call_started",call)),/INVALID_TRANSITION/);
+    await assert.rejects(service.reducers.recordInvestigationEvent(event("provider_call_completed",{...call,outcome:"completed",durationMs:10,endpoint:"https://other.invalid/v1/chat/completions"})),/INVALID_INPUT/);
+    const complete=event("provider_call_completed",{...call,outcome:"completed",durationMs:10,usageSource:"reported",promptTokens:100,completionTokens:10,totalTokens:110,finishReason:"tool_calls",response:"private synthetic response"});
+    await service.reducers.recordInvestigationEvent(complete);
+    await service.reducers.recordInvestigationEvent(complete);
+    await assert.rejects(service.reducers.recordInvestigationEvent(event("provider_call_failed",{...call,outcome:"failed",durationMs:10,code:"MODEL_UNAVAILABLE"})),/INVALID_TRANSITION/);
+    const failedCall={...call,providerCallId:randomUUID(),step:1};
+    await service.reducers.recordInvestigationEvent(event("provider_call_started",failedCall));
+    await service.reducers.recordInvestigationEvent(event("provider_call_failed",{...failedCall,outcome:"failed",durationMs:15,code:"MODEL_UNAVAILABLE",error:"private synthetic body"}));
+    const truncatedCall={...call,providerCallId:randomUUID(),step:2};
+    await service.reducers.recordInvestigationEvent(event("provider_call_started",truncatedCall));
+    await service.reducers.recordInvestigationEvent(event("provider_call_failed",{...truncatedCall,outcome:"failed",durationMs:20,code:"INVALID_MODEL_OUTPUT",usageSource:"reported",promptTokens:100,completionTokens:40,totalTokens:140,finishReason:"length",response:"private truncated synthetic body"}));
+    assert.equal([...a.db.scopedInvestigations.iter()].find(r=>r.id===runId)!.status,"RUNNING","Provider event fabricated run completion");
+    const findingMeta=meta();
+    const findingId=await result(service,()=>service.reducers.recordFinding({...findingMeta,incidentId,runId,title:"Synthetic accepted finding",summary:"Synthetic observed host communication",evidenceIds:[evidenceId],assetIds:[assetId],confidence:"HIGH",unknowns:["Finding unresolved question"],recommendedNextQueries:["Review route"]}),findingMeta);
+    await a.reducers.acceptFinding({...meta(),incidentId,findingId,reason:"Synthetic evidence reviewed"});
+    const reportMeta=meta();
+    const reportId=await result(a,()=>a.reducers.exportReport({...reportMeta,incidentId}),reportMeta);
+    await eventually(()=>[...a.db.scopedReports.iter()].some(r=>r.id===reportId),"Report not subscribed");
+    const report=JSON.parse([...a.db.scopedReports.iter()].find(r=>r.id===reportId)!.summary);
+    const action=report.actions.find((p:{id:string})=>p.id===proposalId);assert.deepEqual(action.assumptions,["Manual assumption"]);assert.deepEqual(action.uncertainty,["Manual unresolved question"]);assert.deepEqual(action.evidenceIds,[evidenceId]);assert.equal(action.planning,undefined);assert(action.payloadDigest);
+    assert.equal(report.findings.find((f:{id:string})=>f.id===findingId).verificationStatus,"VERIFIED");
+    assert.deepEqual(report.findings.find((f:{id:string})=>f.id===findingId).assetIds,[assetId]);
+    const review=report.findingReviews.find((r:{findingId:string})=>r.findingId===findingId);assert.equal(review.reviewedBy,getUser(a));assert.equal(review.reason,"Synthetic evidence reviewed");assert(review.auditHash);
+    assert(report.unknowns.includes("Manual unresolved question"));assert(report.unknowns.includes("Finding unresolved question"));assert.equal(report.retentionPolicy.version,2);
+    assert.equal(report.providerCalls.length,6);assert.equal(report.providerCalls.filter((e:{type:string})=>e.type==="provider_call_completed").length,1);
+    assert(!JSON.stringify(report.providerCalls).includes("private"));
+    assert(report.providerCalls.some((e:{data:{totalTokens?:number}})=>e.data.totalTokens===110));
+    assert.equal(report.providerCalls.find((e:{type:string})=>e.type==="provider_call_failed").data.totalTokens,undefined);
+    const retainedWithActions=retained();
+    await a.reducers.setIncidentRetentionPolicy({...meta(),incidentId,indefinite:true,minimumRetentionDays:3650,hold:false,expectedVersion:2,reason:"Resume indefinite preservation"});
+    assert.equal(retained(),retainedWithActions,"Policy update deleted or rewrote evidence/actions/history");
+    await a.reducers.setMember({...meta(),incidentId,userId:getUser(b),role:"INVESTIGATOR",active:false});
+    await eventually(()=>![...b.db.scopedRetentionPolicies.iter()].some(p=>p.incidentId===incidentId),"Revoked membership retained policy rows");
+    await assert.rejects(b.reducers.setIncidentRetentionPolicy({...change,...meta(),expectedVersion:3}),/FORBIDDEN/);
+    console.log("PASS synthetic provider call pairing/attribution/redacted projection, report finding review/manual uncertainty and retained actions after policy/revocation");
+    for(const client of clients)client.disconnect();
+    await new Promise<void>((resolve,reject)=>validation.close(error=>error?reject(error):resolve()));
+    console.log("COMPLETION GAPS FOCUSED LIVE SMOKE PASSED (no real provider call or scheduler suite)");return;
+  }
   if(process.env.BREACHBAY_SECURITY_SMOKE_SCOPE==="graph-review"){
     const evidenceId=`${incidentId}:ev-login`,assetId=`${incidentId}:workstation`;
     const baselineScenario=canonical([...a.db.scopedScenarios.iter()].find(s=>s.incidentId===incidentId)!.state);

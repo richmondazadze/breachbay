@@ -4,6 +4,7 @@ import {
   snapshotFromConnection,
   executeCommand,
   backendError,
+  setIncidentRetentionPolicy,
   type DbConnection,
 } from "@/lib/backend/client";
 import type { IncidentClient } from "./use-incident";
@@ -59,6 +60,7 @@ export function createClerkIncidentClient(
     return connection;
   }
   return {
+    setIncidentRetentionPolicy: (command) => setIncidentRetentionPolicy(requireConnection(), command),
     session: () => request<BackendSession>("/api/auth/session"),
     uploadEvidence: async (c) => {
       const token = await getToken();

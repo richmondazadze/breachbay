@@ -1,6 +1,10 @@
 import { canonicalPlanning, boundedNextQueries } from "./planning";
 import { restoreScenario as previewRestore } from "../../src/lib/simulation/restore";
-import { evidenceIndex, actionIndex } from "./report-index";
+import { evidenceIndex, actionIndex, findingIndex, findingReviews, reportUnknowns, planningIndex } from "./report-index";
+import { defaultRetentionPolicy, validateRetentionSettings } from "./retention";
+import { isProviderCallEvent, providerCallData } from "./provider-call";
+import { PROVIDER_CALL_EVENT_TYPES } from "../../src/lib/contracts";
+import { verificationReassessment } from "./verification-reassessment";
 import { bootstrapPolicy } from "./bootstrap-policy";
 import "./runtime-compat";
 import {
@@ -263,6 +267,7 @@ function command<T extends { idempotencyKey: string; correlationId: string }>(
   capability: string | undefined,
   apply: (actor: ReturnType<typeof user>) => string,
   recent = false,
+  auditDetail?: () => string,
 ) {
   text(args.idempotencyKey, "idempotency key", 128);
   text(args.correlationId, "correlation ID", 128);
@@ -303,7 +308,7 @@ function command<T extends { idempotencyKey: string; correlationId: string }>(
     name,
     objectId,
     args.correlationId,
-    "reason" in args && typeof args.reason === "string" ? args.reason : "",
+    auditDetail ? auditDetail() : "reason" in args && typeof args.reason === "string" ? args.reason : "",
   );
   ctx.db.commandReceipts.insert({
     id: key,
@@ -471,6 +476,7 @@ export const createIncident = db.reducer(
           active: true,
           joinedAt: now,
         });
+        ctx.db.incidentRetentionPolicies.insert({ ...defaultRetentionPolicy(id), version: 1, updatedBy: actor.id, updatedAt: now });
         ctx.db.tasks.insert({
           id: uid(ctx, "task"),
           incidentId: id,
@@ -618,6 +624,32 @@ export const transitionIncident = db.reducer(
       },
       true,
     ),
+);
+export const setIncidentRetentionPolicy = db.reducer(
+  { ...scopedMeta, indefinite: t.bool(), minimumRetentionDays: t.u32(), hold: t.bool(), expectedVersion: t.u32(), reason: t.string() },
+  (ctx, args) => {
+    let detail = "";
+    return command(ctx, "setIncidentRetentionPolicy", args, args.incidentId, "MANAGE_INCIDENT", actor => {
+      if (actor.service) fail("FORBIDDEN", "Human commander required");
+      text(args.reason, "retention policy reason", 1000);
+      try { validateRetentionSettings(args); } catch { fail("INVALID_INPUT", "Retention days must be an integer from 1 through 3650"); }
+      const saved = ctx.db.incidentRetentionPolicies.id.find(args.incidentId);
+      const before = saved ?? defaultRetentionPolicy(args.incidentId);
+      version(before.version, args.expectedVersion);
+      const after = { ...before, indefinite: args.indefinite, minimumRetentionDays: args.minimumRetentionDays, hold: args.hold, version: before.version + 1, updatedBy: actor.id, updatedAt: iso(ctx) };
+      if (saved) ctx.db.incidentRetentionPolicies.id.update(after);
+      else ctx.db.incidentRetentionPolicies.insert(after);
+      detail = canonical({ reason: args.reason, before, after, automaticDeletionImplemented: false });
+      return after.id;
+    }, true, () => detail);
+  },
+);
+export const scopedRetentionPolicies = db.view(
+  { name: "scoped_retention_policies", public: true }, { lease: t.string() }, t.array(tables.incidentRetentionPolicies.rowType),
+  (ctx, { lease }) => {
+    const ids = visibleIds(ctx, lease);
+    return [...ctx.db.incidents.iter()].filter(i => ids.has(i.id)).map(i => ctx.db.incidentRetentionPolicies.id.find(i.id) ?? defaultRetentionPolicy(i.id));
+  },
 );
 export const inviteMember = db.reducer(
   { ...scopedMeta, targetSubject: t.string(), role: t.string() },
@@ -1071,6 +1103,7 @@ export const recordInvestigationEvent = db.reducer(
           args.type,
           [
             "run_started",
+            ...PROVIDER_CALL_EVENT_TYPES,
             "tool_started",
             "tool_completed",
             "tool_failed",
@@ -1102,6 +1135,24 @@ export const recordInvestigationEvent = db.reducer(
           fail("INVALID_TRANSITION", "Run not started");
         let planningJson=run.planningJson;
         let dataJson=args.dataJson;
+        const providerEvent = isProviderCallEvent(args.type);
+        if (isProviderCallEvent(args.type)) {
+          if (!args.provider || !args.model || !args.dataJson) fail("INVALID_INPUT", "Actual provider/model and call metadata required");
+          let data: ReturnType<typeof providerCallData>;
+          try { data = providerCallData(JSON.parse(args.dataJson), args.type); } catch { fail("INVALID_INPUT", "Invalid provider call metadata"); }
+          // Current gateway permits external inference over sanitized synthetic evidence only.
+          if (data.classification !== "SYNTHETIC") fail("EVIDENCE_REDACTED", "Only synthetic provider calls permitted");
+          const prior = [...ctx.db.streamEvents.incidentId.filter(args.incidentId)].filter(e => e.runId === run.id && isProviderCallEvent(e.type) && e.dataJson && JSON.parse(e.dataJson).providerCallId === data.providerCallId);
+          if (args.type === "provider_call_started") {
+            if (prior.length) fail("INVALID_TRANSITION", "Provider call already started");
+          } else {
+            const started = prior.find(e => e.type === "provider_call_started");
+            if (!started || prior.some(e => e.type !== "provider_call_started")) fail("INVALID_TRANSITION", "Provider call missing start or already finished");
+            const startData = JSON.parse(started.dataJson!);
+            if (started.provider !== args.provider || started.model !== args.model || startData.step !== data.step || startData.mode !== data.mode || startData.endpoint !== data.endpoint || startData.classification !== data.classification) fail("INVALID_INPUT", "Provider call attribution mismatch");
+          }
+          dataJson = canonical(data);
+        }
         if(args.type==="run_completed" && args.dataJson){
           const data=JSON.parse(args.dataJson);
           if(data?.planning!==undefined){
@@ -1117,8 +1168,8 @@ export const recordInvestigationEvent = db.reducer(
           time: iso(ctx),
           provider: args.provider,
           model: args.model,
-          tool: args.tool,
-          summary: args.summary,
+          tool: providerEvent ? undefined : args.tool,
+          summary: providerEvent ? undefined : args.summary,
           payloadJson: undefined,
           dataJson,
         });
@@ -1132,8 +1183,8 @@ export const recordInvestigationEvent = db.reducer(
           ...run,
           status,
           planningJson,
-          provider: args.provider ?? run.provider,
-          model: args.model ?? run.model,
+          provider: providerEvent ? run.provider : args.provider ?? run.provider,
+          model: providerEvent ? run.model : args.model ?? run.model,
           updatedAt: iso(ctx),
         });
         return id;
@@ -1764,6 +1815,13 @@ export const executeSimulation = db.reducer(
             : "Synthetic execution matches deterministic preview. Remaining paths are reported separately.",
           createdAt: iso(ctx),
         });
+        const reassessment = verificationReassessment(verification.status, id, proposal.id);
+        if (reassessment) {
+          const taskId = uid(ctx, "task");
+          const { detail, ...task } = reassessment;
+          ctx.db.tasks.insert({ ...task, id: taskId, incidentId: args.incidentId, assigneeId: actor.id, dueAt: undefined, version: 1, createdAt: iso(ctx) });
+          audit(ctx, actor.id, args.incidentId, "verificationReassessmentQueued", taskId, args.correlationId, canonical(detail));
+        }
         ctx.db.proposals.id.update({
           ...proposal,
           status: verification.status,
@@ -1800,17 +1858,18 @@ export const exportReport = db.reducer({ ...scopedMeta }, (ctx, args) =>
       ),
       evidenceIndex: evidenceIndex([...ctx.db.evidence.incidentId.filter(args.incidentId)]),
       actions: actionIndex([...ctx.db.proposals.incidentId.filter(args.incidentId)]),
-      investigations: [...ctx.db.investigations.incidentId.filter(args.incidentId)].map(r=>({id:r.id,status:r.status,provider:r.provider,model:r.model,...(r.planningJson?{planning:JSON.parse(r.planningJson)}:{}),requestedBy:r.requestedBy,createdAt:r.createdAt,updatedAt:r.updatedAt})),
-      findings: [...ctx.db.findings.incidentId.filter(args.incidentId)].map(f=>({id:f.id,investigationId:f.investigationId,title:f.title,summary:f.summary,confidence:f.confidence,evidenceIds:f.evidenceIds,unknowns:f.unknowns,recommendedNextQueries:f.recommendedNextQueries,createdAt:f.createdAt})),
+      investigations: [...ctx.db.investigations.incidentId.filter(args.incidentId)].map(r=>({id:r.id,status:r.status,provider:r.provider,model:r.model,...(r.planningJson?{planning:planningIndex(r.planningJson)}:{}),requestedBy:r.requestedBy,createdAt:r.createdAt,updatedAt:r.updatedAt})),
+      findings: findingIndex([...ctx.db.findings.incidentId.filter(args.incidentId)]),
+      findingReviews: findingReviews([...ctx.db.auditEvents.incidentId.filter(args.incidentId)]),
+      retentionPolicy: ctx.db.incidentRetentionPolicies.id.find(args.incidentId) ?? defaultRetentionPolicy(args.incidentId),
+      providerCalls: [...ctx.db.streamEvents.incidentId.filter(args.incidentId)].filter(e => isProviderCallEvent(e.type)).map(e => ({ eventId: e.id, runId: e.runId, type: e.type, time: e.time, provider: e.provider, model: e.model, correlationId: e.correlationId, data: providerCallData(JSON.parse(e.dataJson!), e.type as (typeof PROVIDER_CALL_EVENT_TYPES)[number]) })),
       graphReviews: [...ctx.db.graphReviews.incidentId.filter(args.incidentId)],
       scenarioHistory: [...ctx.db.scenarioHistory.incidentId.filter(args.incidentId)].map(({stateJson,...metadata})=>metadata),
       decisions: [...ctx.db.approvals.incidentId.filter(args.incidentId)],
       verifications: [
         ...ctx.db.verifications.incidentId.filter(args.incidentId),
       ],
-      unknowns: [...ctx.db.findings.incidentId.filter(args.incidentId)].flatMap(
-        (f) => f.unknowns,
-      ),
+      unknowns: reportUnknowns([...ctx.db.findings.incidentId.filter(args.incidentId)], [...ctx.db.proposals.incidentId.filter(args.incidentId)]),
     });
     ctx.db.incidentReports.insert({
       id,

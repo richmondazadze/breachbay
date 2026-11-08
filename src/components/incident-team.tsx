@@ -114,6 +114,7 @@ export function IncidentTeam({
                 }
               >
                 <option value="">Unassigned</option>
+                {t.assigneeId && !s.memberships.some(m => m.userId === t.assigneeId && m.active && m.role !== "AI_SERVICE") && <option value={t.assigneeId}>Assignee currently unavailable · {t.assigneeId}</option>}
                 {s.memberships
                   .filter((m) => m.active && m.role !== "AI_SERVICE")
                   .map((m) => (

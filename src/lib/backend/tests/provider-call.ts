@@ -1,0 +1,22 @@
+import assert from "node:assert/strict";
+import { providerCallData } from "../../../../spacetimedb/src/provider-call";
+const start={providerCallId:"03f6b1e2-81b4-4e69-a78a-0d52a581f277",step:0,mode:"tools",endpoint:"https://integrate.api.nvidia.com/v1/chat/completions",classification:"SYNTHETIC",usageSource:"unavailable",monetaryCost:"UNKNOWN",outcome:"started"};
+assert.deepEqual(providerCallData({...start,prompt:"private prompt",response:"private response",authorization:"private token"},"provider_call_started"),start);
+const completed={...start,outcome:"completed",durationMs:1000,usageSource:"reported",promptTokens:900,completionTokens:10,totalTokens:910,finishReason:"tool_calls"};
+assert.deepEqual(providerCallData({...completed,headers:{secret:"private"},result:"private response"},"provider_call_completed"),completed);
+const unavailable={...start,outcome:"completed",durationMs:1000};
+assert(!("totalTokens" in providerCallData(unavailable,"provider_call_completed")));
+for(const bad of [{...completed,usageSource:"unavailable"},{...completed,promptTokens:-1},{...completed,totalTokens:Infinity},{...completed,monetaryCost:1},{...completed,outcome:"failed"},{...completed,endpoint:"https://user:pass@example.invalid/v1"},{...completed,endpoint:"https://example.invalid/v1?token=private"},{...completed,endpoint:"https://example.invalid/v1#private"},{...completed,endpoint:"http://example.invalid/v1"},{...completed,providerCallId:"private-api-token"},{...completed,step:8},{...completed,durationMs:120001}])assert.throws(()=>providerCallData(bad,"provider_call_completed"));
+for(const endpoint of ["https://EXAMPLE.invalid/v1","https://example.invalid:443/v1","https://example.invalid:99999/v1","https://example.invalid/a/../v1","https://example.invalid/%2e%2e/v1","https://example.invalid/%zz"]){assert.throws(()=>providerCallData({...completed,endpoint},"provider_call_completed"));}
+const failed={...start,outcome:"failed",durationMs:100,code:"FORBIDDEN"};
+assert.deepEqual(providerCallData({...failed,error:"private provider error"},"provider_call_failed"),failed);
+assert.throws(()=>providerCallData({...failed,code:"arbitrary provider error"},"provider_call_failed"));
+const truncated={...failed,usageSource:"reported",promptTokens:900,completionTokens:10,totalTokens:910,finishReason:"length",code:"INVALID_MODEL_OUTPUT"};
+assert.deepEqual(providerCallData({...truncated,response:"private truncated response"},"provider_call_failed"),truncated);
+const estimate={promptTokensUpperBound:3000,completionTokensUpperBound:1000,totalTokensUpperBound:4000,method:"UTF8_REQUEST_BYTES_PLUS_OVERHEAD",basis:"REQUEST_BUDGET_CEILING",privatePayload:"private budget"};
+const estimated=providerCallData({...failed,usageSource:"estimated",usageEstimate:estimate},"provider_call_failed");
+assert.equal(estimated.usageEstimate?.totalTokensUpperBound,4000);assert(!("totalTokens" in estimated));
+assert(!JSON.stringify(estimated).includes("private"));
+assert.throws(()=>providerCallData({...failed,usageSource:"estimated"},"provider_call_failed"));
+assert.throws(()=>providerCallData({...failed,usageSource:"estimated",usageEstimate:{...estimate,totalTokensUpperBound:0}},"provider_call_failed"));
+console.log("PASS provider metadata retains attribution/timing/reported usage, omits unavailable estimates, rejects unsafe endpoints/bounds and excludes provider payloads");

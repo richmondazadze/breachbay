@@ -18,7 +18,7 @@ test('provider outage and pre-cancellation never report completion or proposals'
     for (const signal of [undefined, AbortSignal.abort()]) {
       const events: InvestigationEvent[] = [];
       await assert.rejects(investigate('a', 'Synthetic objective', ports(events), undefined, signal), e => e instanceof Error && 'code' in e && e.code === 'MODEL_UNAVAILABLE');
-      assert.deepEqual(events.map(e => e.type), ['run_started', 'run_failed']);
+      assert.deepEqual(events.map(e => e.type), signal ? ['run_started', 'run_failed'] : ['run_started', 'provider_call_started', 'provider_call_failed', 'run_failed']);
     }
     assert.equal(calls, 1);
   } finally {
@@ -47,7 +47,7 @@ test('backend terminal signal aborts in-flight transport without publishing run_
     const client = new AbortController();
     await assert.rejects(investigate('a', 'Synthetic objective', ports(events), undefined, AbortSignal.any([client.signal, backend.signal]), backend.signal), e => e instanceof AuthError && e.code === 'DEPENDENCY_UNAVAILABLE');
     assert.equal(sawAbort, true);
-    assert.deepEqual(events.map(e => e.type), ['run_started']);
+    assert.deepEqual(events.map(e => e.type), ['run_started', 'provider_call_started']);
     // Durable cancellation/deadline is backend-owned; no invented success or competing failure event.
     assert(!events.some(e => ['run_failed','run_completed','proposal'].includes(e.type)));
   } finally {

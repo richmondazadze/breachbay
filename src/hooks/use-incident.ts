@@ -22,6 +22,7 @@ import type {
   CommandError,
   GraphEdgeReviewPreparation,
   ReviewGraphEdgeCommand,
+  SetIncidentRetentionPolicyCommand,
 } from "@/lib/contracts";
 export type ConnectionState =
   | "connecting"
@@ -39,6 +40,7 @@ export interface EvidenceUploadCommand extends CommandMeta {
 }
 export interface ProtectedDownload { blob: Blob; filename: string }
 export interface IncidentClient {
+  setIncidentRetentionPolicy(command: SetIncidentRetentionPolicyCommand): Promise<CommandResult<{ id: string }>>;
   readGraphEdgeReview(incidentId: string, edgeId: string): Promise<CommandResult<GraphEdgeReviewPreparation>>;
   reviewGraphEdge(command: ReviewGraphEdgeCommand): Promise<CommandResult<{ id: string }>>;
   checkpointScenario(command: CommandMeta & { incidentId: string }): Promise<CommandResult<{ id: string }>>;

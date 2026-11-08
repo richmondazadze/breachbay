@@ -58,6 +58,7 @@ import RecordInvestigationEventReducer from "./record_investigation_event_reduce
 import RecordToolRunReducer from "./record_tool_run_reducer";
 import RestoreScenarioReducer from "./restore_scenario_reducer";
 import ReviewGraphEdgeReducer from "./review_graph_edge_reducer";
+import SetIncidentRetentionPolicyReducer from "./set_incident_retention_policy_reducer";
 import SetMemberReducer from "./set_member_reducer";
 import SetUserStatusReducer from "./set_user_status_reducer";
 import SimulateActionReducer from "./simulate_action_reducer";
@@ -91,6 +92,7 @@ import ScopedPresenceRow from "./scoped_presence_table";
 import ScopedProfilesRow from "./scoped_profiles_table";
 import ScopedProposalsRow from "./scoped_proposals_table";
 import ScopedReportsRow from "./scoped_reports_table";
+import ScopedRetentionPoliciesRow from "./scoped_retention_policies_table";
 import ScopedScenarioHistoryRow from "./scoped_scenario_history_table";
 import ScopedScenariosRow from "./scoped_scenarios_table";
 import ScopedSimulationsRow from "./scoped_simulations_table";
@@ -250,6 +252,13 @@ const tablesSchema = __schema({
     constraints: [
     ],
   }, ScopedReportsRow),
+  scopedRetentionPolicies: __table({
+    name: 'scoped_retention_policies',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, ScopedRetentionPoliciesRow),
   scopedScenarioHistory: __table({
     name: 'scoped_scenario_history',
     indexes: [
@@ -327,6 +336,7 @@ const reducersSchema = __reducers(
   __reducerSchema("record_tool_run", RecordToolRunReducer),
   __reducerSchema("restore_scenario", RestoreScenarioReducer),
   __reducerSchema("review_graph_edge", ReviewGraphEdgeReducer),
+  __reducerSchema("set_incident_retention_policy", SetIncidentRetentionPolicyReducer),
   __reducerSchema("set_member", SetMemberReducer),
   __reducerSchema("set_user_status", SetUserStatusReducer),
   __reducerSchema("simulate_action", SimulateActionReducer),
@@ -347,7 +357,7 @@ const REMOTE_MODULE = {
     cliVersion: "2.14.1" as const,
   },
   tables: tablesSchema.schemaType.tables,
-  viewsWithArgs: ["my_invitations", "my_receipts", "scoped_acknowledgments", "scoped_approvals", "scoped_assets", "scoped_audit_events", "scoped_edges", "scoped_evidence", "scoped_findings", "scoped_graph_reviews", "scoped_incidents", "scoped_indicators", "scoped_investigations", "scoped_memberships", "scoped_messages", "scoped_presence", "scoped_profiles", "scoped_proposals", "scoped_reports", "scoped_scenario_history", "scoped_scenarios", "scoped_simulations", "scoped_stream_events", "scoped_tasks", "scoped_tool_runs", "scoped_verifications"],
+  viewsWithArgs: ["my_invitations", "my_receipts", "scoped_acknowledgments", "scoped_approvals", "scoped_assets", "scoped_audit_events", "scoped_edges", "scoped_evidence", "scoped_findings", "scoped_graph_reviews", "scoped_incidents", "scoped_indicators", "scoped_investigations", "scoped_memberships", "scoped_messages", "scoped_presence", "scoped_profiles", "scoped_proposals", "scoped_reports", "scoped_retention_policies", "scoped_scenario_history", "scoped_scenarios", "scoped_simulations", "scoped_stream_events", "scoped_tasks", "scoped_tool_runs", "scoped_verifications"],
   reducers: reducersSchema.reducersType.reducers,
   ...proceduresSchema,
 } satisfies __RemoteModule<

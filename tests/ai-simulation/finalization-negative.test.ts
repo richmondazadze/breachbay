@@ -59,6 +59,15 @@ test('native JSON correction occurs once without tools, stripping, publication o
     assert(guidance.includes(JSON.stringify(FINAL_RESPONSE_CONTRACT)));
     assert(guidance.includes(evidence.sha256)); assert(guidance.includes('scenarioVersion'));
     assert.equal(events.filter(e => e.type === 'tool_completed').length, 3);
+    const providerEvents = events.filter(e => e.type.startsWith('provider_call_'));
+    assert.equal(providerEvents.length, 6);
+    assert.deepEqual(providerEvents.map(e => [e.type, e.data.step, e.data.mode]), [
+      ['provider_call_started', 0, 'tools'], ['provider_call_completed', 0, 'tools'],
+      ['provider_call_started', 1, 'tools'], ['provider_call_completed', 1, 'tools'],
+      ['provider_call_started', 2, 'final_json'], ['provider_call_completed', 2, 'final_json'],
+    ]);
+    assert.equal(new Set(providerEvents.map(e => e.data.providerCallId)).size, 3);
+    assert(providerEvents.every(e => e.incidentId === 'a' && e.model === LIGHTNING_MODEL && e.data.classification === 'SYNTHETIC' && e.data.endpoint === 'https://provider.invalid/v1/chat/completions' && e.data.usageSource === 'unavailable'));
     assert.deepEqual(events.at(-1)!.data.validationCorrections, [{ step: 1, reason: 'FINAL_JSON_INVALID' }]);
     noPublishedCandidate(events);
   });
@@ -70,6 +79,9 @@ test('finalization tool calls are rejected without executing or counting them', 
     assert.equal(requests.length, 3);
     assert.equal(events.filter(e => e.type === 'tool_started').length, 3);
     assert.equal(events.at(-1)!.data.completedDistinctTools, 3);
+    const finalFailure = events.find(e => e.type === 'provider_call_failed');
+    assert.equal(finalFailure?.data.mode, 'final_json');
+    assert.equal(finalFailure?.data.code, 'INVALID_MODEL_OUTPUT');
     noPublishedCandidate(events);
   });
 });

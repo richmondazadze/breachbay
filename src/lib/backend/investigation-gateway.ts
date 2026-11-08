@@ -5,6 +5,8 @@ import { validatePlanning, type ResponsePlan } from "../ai/planning";
 import { clerkClient } from "@clerk/nextjs/server";
 import { configureInvestigationGateway } from "../ai/gateway";
 import { AIError, providerConfig } from "../ai/nemotron";
+import { isProviderCallEvent, providerCallData } from "../../../spacetimedb/src/provider-call";
+import { BackendCommandError, canonicalBackendCommandError, committedCommandData } from "./command-error";
 import { sanitizeEvidence, type Finding as AIFinding } from "../ai/evidence";
 import type {
   InvestigationEvent,
@@ -18,7 +20,6 @@ import {
   snapshotFromConnection,
 } from "./client";
 import type { Scenario } from "../simulation/types";
-import { backendError } from "./client";
 import { toolTrace, traceEvidenceIds, safeTraceJson, runDeadlineReached } from "./investigation-trace";
 import { assertServiceSession } from "./service-session-operator";
 import { ERROR_CODES } from "../contracts";
@@ -83,14 +84,7 @@ export function installInvestigationGateway() {
       const started = await executeCommand(conn, command, () =>
         conn.reducers.startInvestigation(command),
       );
-      if (!started.ok)
-        throw new AuthError(
-          started.error.code === "FORBIDDEN"
-            ? "FORBIDDEN"
-            : "DEPENDENCY_UNAVAILABLE",
-          started.error.message,
-        );
-      const runId = started.data.id;
+      const runId = committedCommandData(started).id;
       const originalRun = [...conn.db.scopedInvestigations.iter()].find(r => r.id === runId);
       if (originalRun?.status === "COMPLETED") {
         const deny = async (): Promise<never> => { throw new AuthError("FORBIDDEN", "Completed run is read-only; consume recovered result"); };
@@ -155,14 +149,14 @@ export function installInvestigationGateway() {
       const ports: InvestigationPorts = {
         async loadContext(incidentId) {
           if (incidentId !== command.incidentId)
-            throw new AIError("FORBIDDEN", "Incident scope mismatch");
+            throw new BackendCommandError("FORBIDDEN");
           const state = [...conn.db.scopedScenarios.iter()].find(
             (s) => s.incidentId === incidentId,
           )?.state;
           if (!state)
-            throw new AIError("FORBIDDEN", "Synthetic scenario unavailable");
+            throw new BackendCommandError("FORBIDDEN");
           const context = snapshotFromConnection(conn, incidentId);
-          if (!context) throw new AIError("FORBIDDEN", "Membership revoked");
+          if (!context) throw new BackendCommandError("FORBIDDEN");
           return {
             incidentId,
             summary: sanitizeEvidence({
@@ -210,7 +204,7 @@ export function installInvestigationGateway() {
         },
         async persistEvent(event: InvestigationEvent) {
           if (event.incidentId !== command.incidentId)
-            throw new AIError("FORBIDDEN", "Event scope mismatch");
+            throw new BackendCommandError("FORBIDDEN");
           const m = eventMeta(event.eventId);
           const tool =
             typeof event.data.tool === "string" ? event.data.tool : undefined;
@@ -283,9 +277,7 @@ export function installInvestigationGateway() {
                     recommendedNextQueries:finding.recommendedNextQueries,
                   }),
               );
-              if (!saved.ok)
-                throw new AIError("INVALID_MODEL_OUTPUT", saved.error.message);
-              mapped.set(event.eventId, saved.data.id);
+              mapped.set(event.eventId, committedCommandData(saved).id);
             }
             await conn.reducers.recordInvestigationEvent({
               ...m,
@@ -295,7 +287,7 @@ export function installInvestigationGateway() {
               provider: event.provider,
               model: event.model,
               tool,
-              dataJson: safeTraceJson({...event.data,
+              dataJson: isProviderCallEvent(event.type) ? JSON.stringify(providerCallData(event.data, event.type)) : safeTraceJson({...event.data,
                 ...(event.type === "finding" ? {findingId:mapped.get(event.eventId)} : {}),
                 ...(event.type === "run_completed" && Array.isArray(event.data.distinctTools) ? {distinctToolsCount:event.data.distinctTools.length} : {}),
                 ...(typeof event.data.code === "string" ? {error:{code:ERROR_CODES.includes(event.data.code as never) ? event.data.code : "INVALID_MODEL_OUTPUT",message:"Investigation operation failed; inspect scoped trace",retryable:["MODEL_UNAVAILABLE","DEPENDENCY_UNAVAILABLE","RATE_LIMITED"].includes(event.data.code)}} : {}),
@@ -310,14 +302,8 @@ export function installInvestigationGateway() {
                       : undefined,
             });
           } catch (error) {
-            if (error instanceof AIError) throw error;
-            const denied = backendError(error);
-            throw new AuthError(
-              denied.code === "FORBIDDEN"
-                ? "FORBIDDEN"
-                : "DEPENDENCY_UNAVAILABLE",
-              denied.message,
-            );
+            if (error instanceof AIError || error instanceof AuthError) throw error;
+            throw canonicalBackendCommandError(error);
           } finally {
             if (["run_completed", "run_failed"].includes(event.type)) {
               if (timer) clearTimeout(timer);
@@ -327,16 +313,17 @@ export function installInvestigationGateway() {
           }
         },
         async getActionStatus(incidentId,actionId){
-          if(closed || incidentId!==command.incidentId)throw new AIError("FORBIDDEN","Action scope unavailable");
+          if(closed || incidentId!==command.incidentId)throw new BackendCommandError("FORBIDDEN");
           const context=requireScope(conn,incidentId,serviceProfile.id,"INVESTIGATE");
-          try{return actionStatusFromSnapshot(context,incidentId,actionId);}catch{throw new AIError("FORBIDDEN","Action unavailable");}
+          try{return actionStatusFromSnapshot(context,incidentId,actionId);}catch{throw new BackendCommandError("FORBIDDEN");}
         },
         async submitProposal(incidentId, action, expectedVersion, findings, planning) {
           if (incidentId !== command.incidentId)
-            throw new AIError("FORBIDDEN", "Proposal scope mismatch");
+            throw new BackendCommandError("FORBIDDEN");
           requireScope(conn,incidentId,serviceProfile.id,"PROPOSE");
           const scenario=[...conn.db.scopedScenarios.iter()].find(s=>s.incidentId===incidentId)?.state;
-          if(!scenario || scenario.version!==expectedVersion)throw new AIError("INVALID_MODEL_OUTPUT","Scenario changed before planning persistence");
+          if(!scenario)throw new BackendCommandError("DEPENDENCY_UNAVAILABLE");
+          if(scenario.version!==expectedVersion)throw new BackendCommandError("VERSION_CONFLICT");
           const validatedPlan=planning===undefined?undefined:validatePlanning(planning,scenario as Scenario);
           const m = {
             idempotencyKey: `proposal:${runId}`,
@@ -359,14 +346,7 @@ export function installInvestigationGateway() {
               expectedVersion,
             }),
           );
-          if (!result.ok)
-            throw new AIError(
-              result.error.code === "FORBIDDEN"
-                ? "FORBIDDEN"
-                : "INVALID_MODEL_OUTPUT",
-              result.error.message,
-            );
-          return result.data.id;
+          return committedCommandData(result).id;
         },
       };
       canonicalRunIds.set(ports, runId);

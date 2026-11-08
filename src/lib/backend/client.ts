@@ -2,11 +2,13 @@
 import { DbConnection } from "./generated";
 import { awaitConnection } from "./connection-start";
 import { installCspSafeCodecs } from "./csp-codecs";
+import { validateRetentionSettings } from "../../../spacetimedb/src/retention";
 import type {
   IncidentSnapshot,
   CommandResult,
   CommandMeta,
   ErrorCode,
+  SetIncidentRetentionPolicyCommand,
 } from "../contracts";
 import { ERROR_CODES } from "../contracts";
 export { DbConnection, tables } from "./generated";
@@ -23,6 +25,7 @@ export const SUBSCRIPTION_QUERIES = [
   "my_invitations",
   "my_receipts",
   "scoped_incidents",
+  "scoped_retention_policies",
   "scoped_memberships",
   "scoped_profiles",
   "scoped_assets",
@@ -136,6 +139,7 @@ export function snapshotFromConnection(
   // Wire strings are validated in module reducers. This adapter restores the canonical enum types.
   return {
     incident,
+    retentionPolicy: scoped(conn.db.scopedRetentionPolicies.iter())[0],
     memberships: scoped(conn.db.scopedMemberships.iter()),
     assets: scoped(conn.db.scopedAssets.iter()),
     evidence: scoped(conn.db.scopedEvidence.iter()),
@@ -228,4 +232,14 @@ export async function executeCommand(
       correlationId: meta.correlationId,
     };
   }
+}
+/** Frontend adapters call this after adopting an applied, scoped connection. */
+export function setIncidentRetentionPolicy(conn: DbConnection, command: SetIncidentRetentionPolicyCommand): Promise<CommandResult<{ id: string }>> {
+  try {
+    validateRetentionSettings(command);
+    if (!Number.isInteger(command.expectedVersion) || command.expectedVersion < 0 || command.expectedVersion > 0xffffffff || !command.reason.trim() || command.reason.length > 1000) throw new Error("INVALID_INPUT");
+  } catch {
+    return Promise.resolve({ ok: false, error: { code: "INVALID_INPUT", message: "Invalid retention settings, policy version or reason", retryable: false }, correlationId: command.correlationId });
+  }
+  return executeCommand(conn, command, () => conn.reducers.setIncidentRetentionPolicy(command));
 }

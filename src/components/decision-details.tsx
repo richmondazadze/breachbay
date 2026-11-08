@@ -37,7 +37,7 @@ export function EvidenceCitations({
             className="citation-chip"
             key={id}
             onClick={() => onInspect(id)}
-            aria-label={`Inspect provenance for evidence ${id}`}
+            aria-label={`Inspect evidence: ${label}`}
             title={`${label} · ${id}`}
           >
             <FileText size={13} />

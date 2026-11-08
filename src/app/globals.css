@@ -3085,6 +3085,38 @@ html[data-input="keyboard"] .theme-toggle-thumb {
 .durable-trace dd { margin: 0; overflow-wrap: anywhere; }
 .trace-citation { border-left: 2px solid var(--line); padding-left: 12px; margin-top: 12px; }
 .durable-trace p, .trace-citation code { overflow-wrap: anywhere; }
+.provider-observation { border-left: 2px solid var(--line); padding-left: 12px; margin-block: 12px; }
+.record-details, .audit-provenance dl { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 8px 12px; margin-block: 18px; font-size: 13px; }
+.record-details dt, .audit-provenance dt { color: var(--muted); }
+.record-details dd, .audit-provenance dd { margin: 0; overflow-wrap: anywhere; }
+.incident-retention summary { cursor: pointer; }
+.incident-retention .button, .incident-timeline .button { min-height: 44px; }
+.incident-retention .button-row { flex-wrap: wrap; }
+.incident-timeline { min-width: 0; }
+.audit-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 20px; }
+.audit-filters .field-label { min-width: 0; margin: 0; }
+.audit-filters input, .audit-filters select { min-width: 0; min-height: 44px; }
+.audit-count, .audit-note { margin: 0 20px 12px; }
+.audit-events { list-style: none; margin: 0; padding: 0 20px; }
+.audit-events .timeline-row { align-items: start; }
+.audit-events .timeline-row > div { min-width: 0; }
+.audit-events time, .audit-events p, .audit-events .button { overflow-wrap: anywhere; }
+.audit-events .button { text-align: left; white-space: normal; justify-content: flex-start; }
+.audit-provenance summary { cursor: pointer; font-size: 13px; }
+.audit-more { padding: 20px; }
+.incident-detail-dialog { margin: 0; left: auto; right: 0; top: 0; bottom: 0; width: min(420px, 100vw); max-width: none; height: 100dvh; max-height: none; color: var(--text); background: var(--panel); border: 0; border-left: 1px solid var(--line); }
+.incident-detail-dialog::backdrop { background: #0006; }
+.incident-detail-dialog > .button { min-height: 44px; }
+.incident-detail-dialog h2, .incident-detail-dialog p, .incident-detail-dialog code, .incident-detail-dialog .button { overflow-wrap: anywhere; }
+.incident-detail-dialog .button { white-space: normal; }
+.detail-relationship { padding-block: 14px; border-bottom: 1px solid var(--line); }
+.detail-relationship h4 { overflow-wrap: anywhere; }
+@media (max-width: 760px) {
+  .audit-filters { grid-template-columns: 1fr; }
+  .audit-events .timeline-row { display: block; }
+  .audit-events .timeline-row time { display: block; margin-bottom: 8px; }
+  .record-details, .audit-provenance dl { grid-template-columns: 1fr; }
+}
 @media (max-width: 560px) { .durable-trace dl { grid-template-columns: 1fr; } }
 @media (max-width: 520px) {
   .topbar { height: auto; min-height: 62px; flex-wrap: wrap; gap: 4px; padding: 8px 16px; }

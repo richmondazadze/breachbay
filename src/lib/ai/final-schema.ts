@@ -20,7 +20,7 @@ interface SchemaNode {
   anyOf?: SchemaNode[];
 }
 export interface FinalJsonSchema { name: 'breachbay_final'; strict: true; schema: SchemaNode }
-/** Exact hosted provider rejects uniqueItems; retain it in the authoritative local schema. */
+/** Provider grammar omits unsupported uniqueness and uses a conservative distinct-type subset. Local rules stay authoritative. */
 export function providerTransportSchema(format: FinalJsonSchema): FinalJsonSchema {
   const transport = structuredClone(format);
   const omitUnsupportedKeyword = (node: SchemaNode) => {
@@ -30,6 +30,24 @@ export function providerTransportSchema(format: FinalJsonSchema): FinalJsonSchem
     for (const child of node.anyOf ?? []) omitUnsupportedKeyword(child);
   };
   omitUnsupportedKeyword(transport.schema);
+  const properties = transport.schema.properties;
+  const planning = properties?.planning.properties;
+  const alternatives = planning?.alternatives;
+  const alternative = alternatives?.items?.properties;
+  const proposals = properties?.proposal.anyOf;
+  const nullProposal = proposals?.find(node => node.type === 'null');
+  if (!properties || !planning || !alternatives || !alternative || !proposals || !nullProposal) throw new OutputValidationError({ stage: 'FINAL_JSON', reason: 'FINAL_SCHEMA_INVALID' });
+  const actions = proposals.filter(node => node.type === 'object');
+  // Full object branches use only existing schema keywords; never enumerate target combinations.
+  // Native generation is narrower than runtime distinctness, which also permits differing target sets.
+  transport.schema.anyOf = [object({ ...properties, proposal: nullProposal }), ...actions.flatMap(proposal => {
+    const differentTypes = actions.filter(action => action.properties?.type.enum?.[0] !== proposal.properties?.type.enum?.[0]);
+    if (!differentTypes.length) return [];
+    return [object({ ...properties, proposal, planning: object({ ...planning, alternatives: {
+      ...alternatives, minItems: 1, items: object({ ...alternative, action: { anyOf: differentTypes } }),
+    } }) })];
+  })];
+  if (JSON.stringify(transport).length > 50000) throw new OutputValidationError({ stage: 'FINAL_JSON', reason: 'FINAL_SCHEMA_INVALID' });
   return transport;
 }
 const object = (properties: Record<string, SchemaNode>): SchemaNode => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false });

@@ -6,6 +6,9 @@ import { OutputValidationError } from '../../src/lib/ai/diagnostics';
 import { sanitizeEvidence } from '../../src/lib/ai/evidence';
 import { credentialCompromiseScenario } from '../../src/lib/simulation/scenario';
 import { LIGHTNING_MODEL, providerRequestOptions } from '../../src/lib/ai/provider-profile';
+import { validatePlanning } from '../../src/lib/ai/planning';
+// Use the installed standard JSON Schema validator, independently of the local subset checker.
+const { validate: validateJsonSchema } = require('next/dist/compiled/schema-utils3') as { validate(schema: unknown, value: unknown): void };
 const evidence = (id: string, incidentId = 'a') => sanitizeEvidence({ id, incidentId, version: 1, source: 'Synthetic', capturedAt: '2026-11-07T00:00:00Z', synthetic: true, fields: { description: 'EXCERPT_MUST_NOT_ENTER_SCHEMA' } });
 const scenario = credentialCompromiseScenario('a');
 const format = finalResponseSchema(scenario, [evidence('retrieved'), evidence('not-retrieved'), evidence('foreign', 'b')], new Set(['retrieved', 'foreign', 'graph-only-reference']));
@@ -96,7 +99,74 @@ test('strict schema request options remain exact-Lightning and tool-free only', 
   assert.deepEqual(providerRequestOptions('other-explicit-model', 'final_json', format), providerRequestOptions('other-explicit-model'));
 });
 
-test('immutable transport adapter removes only schema uniqueItems and preserves every other constraint', () => {
+test('native generation schema preserves null and accepts every distinct action-type pairing', () => {
+  const transport = providerTransportSchema(format);
+  const insufficient = { ...structuralControl(), planning: { assumptions: [], uncertainty: [], alternatives: [] }, proposal: null };
+  validateJsonSchema(transport.schema, insufficient);
+  validateFinalResponseSchema(insufficient, format);
+  validateJsonSchema(transport.schema, { ...structuralControl(), proposal: null });
+  const actions = [
+    { type: 'ISOLATE_SIMULATED_HOST', targetIds: ['app-host'] },
+    { type: 'RESET_SIMULATED_CREDENTIAL', targetIds: ['workstation'] },
+    { type: 'BLOCK_SIMULATED_ROUTE', targetIds: ['ws-jump'] },
+  ];
+  for (const proposal of actions) for (const alternative of actions.filter(action => action.type !== proposal.type)) {
+    const value = structuralControl(); value.proposal = proposal; value.planning.alternatives[0].action = alternative;
+    const original = JSON.stringify(value);
+    validateJsonSchema(transport.schema, value);
+    validateFinalResponseSchema(value, format);
+    validatePlanning(value.planning, scenario);
+    assert.equal(JSON.stringify(value), original);
+  }
+});
+
+test('native generation schema rejects same-type alternatives and missing alternatives without repair', () => {
+  const transport = providerTransportSchema(format);
+  for (const [type, first, second] of [
+    ['ISOLATE_SIMULATED_HOST', 'app-host', 'workstation'],
+    ['RESET_SIMULATED_CREDENTIAL', 'workstation', 'app-host'],
+    ['BLOCK_SIMULATED_ROUTE', 'ws-jump', 'jump-db'],
+  ]) {
+    for (const target of [first, second]) {
+      const value = structuralControl(); value.proposal = { type, targetIds: [first] };
+      value.planning.alternatives[0].action = { type, targetIds: [target] };
+      const original = JSON.stringify(value);
+      // Local structural/runtime planning rules remain broader than the conservative generation subset.
+      validateFinalResponseSchema(value, format);
+      validatePlanning(value.planning, scenario);
+      assert.throws(() => validateJsonSchema(transport.schema, value));
+      assert.equal(JSON.stringify(value), original);
+    }
+  }
+  const noAlternative = structuralControl(); noAlternative.planning.alternatives = [];
+  assert.throws(() => validateJsonSchema(transport.schema, noAlternative));
+});
+
+test('native proposal branches preserve complete strict objects, scoped IDs and bounded schema size', () => {
+  const transport = providerTransportSchema(format), value = structuralControl();
+  assert(JSON.stringify(transport).length <= 50000);
+  const inspect = (node: any) => {
+    if (node.type === 'object') {
+      assert.equal(node.additionalProperties, false);
+      assert.deepEqual(node.required, Object.keys(node.properties));
+    }
+    Object.values(node.properties ?? {}).forEach(inspect);
+    if (node.items) inspect(node.items);
+    (node.anyOf ?? []).forEach(inspect);
+  };
+  inspect(transport.schema);
+  for (const mutate of [
+    (v: typeof value) => { v.findings[0].evidenceIds = ['foreign']; },
+    (v: typeof value) => { v.proposal.targetIds = ['ws-jump']; },
+    (v: typeof value) => { v.planning.alternatives[0].action.targetIds = ['portal-app']; },
+    (v: any) => { v.planning.extra = true; },
+  ]) {
+    const invalid = structuralControl(); mutate(invalid);
+    assert.throws(() => validateJsonSchema(transport.schema, invalid));
+  }
+});
+
+test('immutable transport adapter preserves base constraints while adding proposal-type branches', () => {
   const frozen = structuredClone(format);
   const deepFreeze = (value: any): any => { if (value && typeof value === 'object') { Object.values(value).forEach(deepFreeze); Object.freeze(value); } return value; };
   deepFreeze(frozen);
@@ -114,7 +184,10 @@ test('immutable transport adapter removes only schema uniqueItems and preserves 
       else compare(before[key], after[key], `${path}/${key}`);
     }
   };
-  compare(frozen, transport);
+  const baseTransport = { ...transport, schema: { ...transport.schema } };
+  delete baseTransport.schema.anyOf;
+  compare(frozen, baseTransport);
+  assert.equal(transport.schema.anyOf?.length, 4);
   assert(changes.length > 0);
   assert(!JSON.stringify(transport).includes('"uniqueItems":'));
 });

@@ -225,7 +225,7 @@ export function ConnectedIncident({
         </div>
       )}
       {state.receipt && (
-        <p role="status" className="teal">
+        <p role="status" className="teal command-receipt">
           {state.receipt}
         </p>
       )}

@@ -1316,6 +1316,21 @@ footer > span:last-child {
 .connected-main .button {
   margin-top: 10px;
 }
+.command-receipt {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.live-command .button-row {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.live-command .button-row > .button {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 .auth-page {
   max-width: 1150px;
   padding: 45px 30px;
@@ -2185,7 +2200,7 @@ textarea,
 }
 .source-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   align-items: center;
   gap: 5px 8px;
   padding: 10px 14px;
@@ -2204,7 +2219,12 @@ textarea,
   color: var(--text);
   font-size: 13px;
   width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
   line-height: 1.5;
+}
+.source-title > svg {
+  flex-shrink: 0;
 }
 .source-row > span {
   grid-column: 1;
@@ -2212,10 +2232,15 @@ textarea,
   color: var(--muted);
   display: block;
   margin-top: 5px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .source-row .citation-row {
   grid-column: 2;
   margin: 0;
+  min-width: 0;
+  justify-self: end;
+  max-width: 100%;
 }
 .source-row .citation-chip {
   padding: 5px 7px;

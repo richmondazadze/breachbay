@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {createClerkClient} from '@clerk/backend';
 import {pathToFileURL} from 'node:url';
 import {join} from 'node:path';
+import {createRequire} from 'node:module';
+const require=createRequire(import.meta.url);
 
 let phase='protected operator configuration';
 async function main() {
@@ -10,7 +12,8 @@ async function main() {
   const load=async path=>{const module=await import(pathToFileURL(join(process.cwd(),path)).href);return module.default??module;};
   const {connectBackend,snapshotFromConnection}=await load('src/lib/backend/client.ts');
   const {assertServiceSession}=await load('src/lib/backend/service-session-operator.ts');
-  const {providerCallData}=await load('spacetimedb/src/provider-call.ts');
+  // The module package is ESM while shared contracts are CJS under tsx; use its CJS hook.
+  const {providerCallData}=require(join(process.cwd(),'spacetimedb/src/provider-call.ts'));
   const {providerConfig}=await load('src/lib/ai/nemotron.ts');
   const config=providerConfig();
   const clerk=createClerkClient({secretKey:required('CLERK_SECRET_KEY')});

@@ -5,6 +5,7 @@ import type { IncidentSnapshot } from "@/lib/contracts";
 import type { IncidentClient } from "@/hooks/use-incident";
 import { useInterfaceMotion } from "@/hooks/use-interface-motion";
 import { incidentObjectLabel } from "@/hooks/audit-presentation";
+import { displayLabel } from "./ui/labels";
 import { Button } from "./ui/button";
 import { EvidenceCitations, ResponseTargets } from "./decision-details";
 import { ResponsePlanning } from "./response-planning";
@@ -32,8 +33,8 @@ export function DetailDialog({ title, objectId, onDismiss, children }: { title: 
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
     }}
-    initial={uiMotion.instant ? false : { opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }}
-    exit={{ opacity: 0, x: uiMotion.instant ? 0 : 24 }} transition={{ duration: uiMotion.duration, ease: [0.32, 0.72, 0, 1] }}>
+    initial={uiMotion.instant ? false : { opacity: 0, transform: "translateX(24px)" }} animate={{ opacity: 1, transform: "translateX(0px)" }}
+    exit={{ opacity: 0, transform: uiMotion.instant ? "translateX(0px)" : "translateX(24px)" }} transition={{ duration: uiMotion.duration, ease: [0.32, 0.72, 0, 1] }}>
     <Button ref={close} autoFocus type="button" variant="outline" onClick={onDismiss}>Close details</Button>
     <h2 id={titleId}>{title}</h2>{children}
   </motion.dialog>;
@@ -70,12 +71,12 @@ export function IncidentDetails({ snapshot: s, selected, client, downloadDisable
       <p>Captured <time dateTime={evidence.capturedAt}>{evidence.capturedAt}</time> · attached <time dateTime={evidence.createdAt}>{evidence.createdAt}</time></p>
       {client && evidence.classification === "SYNTHETIC" && <ProtectedDownloadControl key={evidence.id} client={client} incidentId={s.incident.id} evidenceId={evidence.id} disabled={downloadDisabled} />}
       <pre className="evidence-content">{evidence.redactedContent}</pre>
-      <dl className="record-details"><dt>Evidence version</dt><dd>{evidence.version}</dd><dt>Original SHA-256</dt><dd>{evidence.sha256}</dd><dt>Derivative SHA-256</dt><dd>{evidence.redactedSha256}</dd><dt>Approved for model use</dt><dd>{evidence.modelApproved ? "Yes" : "No"}</dd></dl>
+      <details className="bb-evidence-integrity"><summary>Evidence integrity & model approval</summary><dl className="record-details"><dt>Evidence version</dt><dd>{evidence.version}</dd><dt>Original SHA-256</dt><dd>{evidence.sha256}</dd><dt>Derivative SHA-256</dt><dd>{evidence.redactedSha256}</dd><dt>Approved for model use</dt><dd>{evidence.modelApproved ? "Yes" : "No"}</dd></dl></details>
       {!!evidence.assetIds.length && <><h3>Linked assets</h3>{evidence.assetIds.map(id => <div key={id}>{link(id)}</div>)}</>}
     </>}
     {asset && <dl className="record-details">
-      <dt>Type</dt><dd>{asset.type}</dd><dt>Server-recorded status</dt><dd>{asset.state}</dd>
-      <dt>Owner</dt><dd>{asset.owner || "Owner not recorded"}</dd><dt>Criticality</dt><dd>{asset.criticality}</dd>
+      <dt>Type</dt><dd>{displayLabel(asset.type)}</dd><dt>Server-recorded status</dt><dd>{displayLabel(asset.state)}</dd>
+      <dt>Owner</dt><dd>{asset.owner || "Owner not recorded"}</dd><dt>Criticality</dt><dd>{displayLabel(asset.criticality)}</dd>
       <dt>Last seen</dt><dd><time dateTime={asset.lastSeen}>{asset.lastSeen}</time></dd>
       <dt>Risk labels</dt><dd>{asset.riskLabels.length ? asset.riskLabels.join(", ") : "No risk labels recorded"}</dd><dt>Asset version</dt><dd>{asset.version}</dd>
     </dl>}

@@ -32,3 +32,6 @@ design/brand/live-sign-up.jpg
 *.odt
 coordination/
 design/
+
+# Licensed Fontshare assets are delivered privately for self-hosting.
+public/fonts/

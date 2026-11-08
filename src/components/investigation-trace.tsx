@@ -43,7 +43,7 @@ export function InvestigationTrace({ events, evidence, onInspect }: {
             {source && citation.excerpt && <details><summary>Retrieved redacted excerpt</summary><pre className="evidence-content">{citation.excerpt}</pre></details>}
           </div>;
         })}
-        <p className="small muted">Event {event.eventId} · reference {event.correlationId}</p>
+        <details className="small"><summary>Event reference</summary><p>Event {event.eventId} · reference {event.correlationId}</p></details>
       </li>;
     })}</ol>
   </details>;

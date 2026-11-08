@@ -1,10 +1,11 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ReactFlow, Background, Controls, type Node, type Edge, type XYPosition, type Viewport, type NodeChange } from "@xyflow/react";
 import { Button } from "./ui/button";
 export interface TwinView { positions: Record<string,XYPosition>; pinned: string[]; selected?: string[]; viewport?: Viewport }
 export function DetailedTwin({nodes,edges,view,setView,onInspect}:{nodes:Node[];edges:Edge[];view:TwinView;setView:React.Dispatch<React.SetStateAction<TwinView>>;onInspect:(id:string)=>void}) {
   const initialFit = useRef(!view.viewport);
+  const [list, setList] = useState(false);
   useEffect(()=>{
     setView(previous=>{
       const missing=nodes.filter(n=>!previous.positions[n.id]);if(!missing.length)return previous;
@@ -21,11 +22,12 @@ export function DetailedTwin({nodes,edges,view,setView,onInspect}:{nodes:Node[];
     return changed?{...previous,positions,selected}:previous;
   });
   return <>
+    <div className="bb-graph-toolbar"><h3>Evidence & response topology</h3><Button variant="outline" size="sm" aria-pressed={list} onClick={()=>setList(!list)}>{list ? "Show diagram" : "Show node list"}</Button></div>
     <p className="panel-foot">Drag nodes to arrange them, or focus a node and press Enter to select it before using arrow keys. Pins and camera are local view preferences; they do not change incident state.</p>
-    <div className="graph-canvas"><ReactFlow nodes={graphNodes} edges={edges} fitView={initialFit.current} defaultViewport={view.viewport} nodesConnectable={false} onNodesChange={changes} onMoveEnd={(_,viewport)=>setView(previous=>({...previous,viewport}))} onNodeClick={(_,node)=>onInspect(node.id)}>
+    <div className="graph-canvas" hidden={list}><ReactFlow nodes={graphNodes} edges={edges} fitView={initialFit.current} defaultViewport={view.viewport} nodesConnectable={false} onNodesChange={changes} onMoveEnd={(_,viewport)=>setView(previous=>({...previous,viewport}))} onNodeClick={(_,node)=>onInspect(node.id)}>
       <Background/><Controls showInteractive={false}/>
     </ReactFlow></div>
-    <div className="twin-node-register" aria-label="Accessible node list">
+    <div className="twin-node-register" hidden={!list} aria-label="Accessible node list">
       {nodes.map(node=><div key={node.id}><Button variant="ghost" onClick={()=>onInspect(node.id)}>{node.ariaLabel ?? node.id}</Button><Button variant="outline" size="sm" aria-pressed={view.pinned.includes(node.id)} onClick={()=>setView(previous=>({...previous,pinned:previous.pinned.includes(node.id)?previous.pinned.filter(id=>id!==node.id):[...previous.pinned,node.id]}))}>{view.pinned.includes(node.id)?"Unpin":"Pin"} node</Button></div>)}
     </div>
   </>;

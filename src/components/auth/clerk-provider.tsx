@@ -23,13 +23,13 @@ export function BreachBayIdentityProvider({
       signInFallbackRedirectUrl="/command"
       appearance={{
         variables: {
-          colorPrimary: theme === "light" ? "#0a705a" : "#27d6b0",
-          colorBackground: theme === "light" ? "#ffffff" : "#152125",
-          colorForeground: theme === "light" ? "#122321" : "#f3f1e9",
-          colorMutedForeground: theme === "light" ? "#4c625c" : "#a8b6b6",
-          borderRadius: "0px",
-          fontFamily: "IBM Plex Sans, Arial, sans-serif",
-          fontFamilyButtons: "IBM Plex Sans, Arial, sans-serif",
+          colorPrimary: theme === "light" ? "#0059EB" : "#7CA4FF",
+          colorBackground: theme === "light" ? "#ffffff" : "#242422",
+          colorForeground: theme === "light" ? "#1E1E1C" : "#ffffff",
+          colorMutedForeground: theme === "light" ? "#62625E" : "#b9b9b3",
+          borderRadius: "6px",
+          fontFamily: "Switzer, Arial, sans-serif",
+          fontFamilyButtons: "Switzer, Arial, sans-serif",
         },
       }}
     >

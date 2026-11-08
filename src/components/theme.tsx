@@ -35,6 +35,7 @@ export function ThemeControl() {
       type="button"
       role="switch"
       aria-label="Dark mode"
+      title="Dark mode"
       aria-checked={theme === "dark"}
       onClick={() => choose(theme === "dark" ? "light" : "dark")}
     >

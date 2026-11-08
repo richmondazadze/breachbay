@@ -1,11 +1,11 @@
 import type { ConnectionState } from "@/hooks/use-incident";
 const descriptions = {
   connecting:
-    "Establishing an authenticated subscription. No incident state confirmed yet.",
-  live: "Subscribed state is server-confirmed.",
+    "Connecting securely. Incident data is not available yet.",
+  live: "Incident data is up to date with the server.",
   reconnecting:
     "Connection interrupted. Displayed state may be stale; commands are disabled.",
-  disconnected: "No authenticated subscription. Commands are disabled.",
+  disconnected: "The secure connection is unavailable. Commands are disabled.",
 };
 export function ConnectionStatus({ state }: { state: ConnectionState }) {
   return (

@@ -13,14 +13,11 @@ import { ScenarioHistory, CancelInvestigation } from "./scenario-history";
 import { DetailedTwin, type TwinView } from "./detailed-twin";
 import { IncidentLifecycle, ManualProposal, FindingReview, EvidenceRelationship, AcknowledgeControl } from "./incident-operations";
 import { IncidentTeam } from "./incident-team";
-import { AnimatePresence } from "motion/react";
-import {
-  LayoutDashboard,
-  Network,
-  Search,
-  FileText,
-  MessagesSquare,
-} from "./ui/icons";
+import { AnimatePresence, motion } from "motion/react";
+import { ApplicationFrame, incidentSections } from "./application-frame";
+import { CommandReceipt } from "./command-receipt";
+import { displayLabel, responderLabel } from "./ui/labels";
+import { useInterfaceMotion } from "@/hooks/use-interface-motion";
 import { OperationalOverview } from "./operational-overview";
 import { ConnectionStatus, IncidentLoading } from "./connection-status";
 import {
@@ -29,7 +26,7 @@ import {
   ApprovalRecord,
   ResponseTargets,
 } from "./decision-details";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, type ReactNode } from "react";
 import {
   type Node,
   type Edge,
@@ -42,12 +39,16 @@ import type { Proposal, CommandMeta } from "@/lib/contracts";
 export function ConnectedIncident({
   incidentId,
   client,
+  accountControls,
 }: {
   incidentId: string;
   client?: IncidentClient;
+  accountControls?: ReactNode;
 }) {
   const state = useIncident(incidentId, client);
   const [tab, setTab] = useState("overview");
+  const uiMotion = useInterfaceMotion();
+  const [responseFilter, setResponseFilter] = useState("current");
   const [message, setMessage] = useState("");
   const [objective, setObjective] = useState("");
   const [reason, setReason] = useState("");
@@ -94,10 +95,8 @@ export function ConnectedIncident({
   };
   if (!s)
     return (
-      <main className="connected-main">
-        <a href="/" className="text-button">
-          ← Mission Control preview
-        </a>
+      <ApplicationFrame title="Incident workspace">
+        <a href="/command" className="text-button">← Mission Control</a>
         <div className="page-heading">
           <div>
             <div className="eyebrow">LIVE INCIDENT WORKSPACE</div>
@@ -122,20 +121,20 @@ export function ConnectedIncident({
             authenticated session and a server-authorized subscription.
           </p>
         </div>
-      </main>
+      </ApplicationFrame>
     );
   const nodes: Node[] = s.assets.map((a, i) => ({
     id: a.id,
-    ariaLabel: `${a.name} · ${a.type} · ${a.state} · ${a.criticality} criticality`,
+    ariaLabel: `${a.name} · ${displayLabel(a.type)} · ${displayLabel(a.state)} · ${displayLabel(a.criticality)} criticality`,
     position: { x: (i % 3) * 230, y: Math.floor(i / 3) * 150 },
     data: {
       label: (
         <div className="graph-node">
           <strong>{a.name}</strong>
           <small>
-            {a.type} · {a.criticality}
+            {displayLabel(a.type)} · {displayLabel(a.criticality)}
           </small>
-          <span>{a.state}</span>
+          <span>{displayLabel(a.state)}</span>
         </div>
       ),
     },
@@ -147,9 +146,9 @@ export function ConnectedIncident({
       id: e.id,
       source: e.fromId,
       target: e.toId,
-      label: e.type,
+      label: displayLabel(e.type),
       style: {
-        stroke: e.verificationStatus === "VERIFIED" ? "#27d6b0" : "#b7a181",
+        stroke: e.verificationStatus === "VERIFIED" ? "var(--brand-blue)" : "var(--amber)",
         strokeDasharray:
           e.verificationStatus === "VERIFIED" ? undefined : "5 5",
       },
@@ -160,74 +159,29 @@ export function ConnectedIncident({
   const relatedNodes: Node[] = [
     ...s.evidence.filter(e=>linkedIds.has(e.id)).map(e=>({id:e.id,name:e.title,kind:"Evidence"})),
     ...s.indicators.filter(i=>linkedIds.has(i.id)).map(i=>({id:i.id,name:`${i.kind} ${i.normalizedValue}`,kind:"Indicator"})),
-    ...s.proposals.filter(p=>linkedIds.has(p.id)).map(p=>({id:p.id,name:p.action.type,kind:"Proposal"})),
+    ...s.proposals.filter(p=>linkedIds.has(p.id)).map(p=>({id:p.id,name:displayLabel(p.action.type),kind:"Proposal"})),
   ].map((n,i)=>({id:n.id,position:{x:(i%3)*230,y:(Math.ceil(s.assets.length/3)+Math.floor(i/3))*150},ariaLabel:`${n.kind} · ${n.name}`,data:{label:<div className="graph-node"><strong>{n.name}</strong><small>{n.kind}</small></div>},style:{width:180}}));
   const latestInvestigation = [...s.investigations].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.id.localeCompare(b.id)).at(-1);
   const latestSimulation = [...s.simulations].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.id.localeCompare(b.id)).at(-1);
+  const isHistorical = (proposal: Proposal) => ["REJECTED","VERIFIED_SUCCESS","VERIFIED_PARTIAL","VERIFIED_FAILED"].includes(proposal.status);
+  const proposals = [...s.proposals].sort((a,b)=>Date.parse(b.updatedAt)-Date.parse(a.updatedAt) || a.id.localeCompare(b.id));
+  const currentProposals = proposals.filter(p=>!isHistorical(p));
+  const overviewProposal = currentProposals.find(p=>p.status === "PENDING_APPROVAL") ?? currentProposals[0] ?? proposals[0];
+  const visibleProposals = responseFilter === "all" ? proposals : proposals.filter(p=>responseFilter === "history" ? isHistorical(p) : !isHistorical(p));
   return (
-    <main className="connected-main live-command">
-      <aside className="live-rail">
-        <a href="/command" aria-label="BreachBay Mission Control">
-          <img src="/brand/harbor.svg" alt="" width="32" height="32" />
-        </a>
-        <nav aria-label="Incident navigation">
-          {[
-            ["overview", "Overview", LayoutDashboard],
-            ["graph", "Response topology", Network],
-            ["investigation", "Investigation", Search],
-            ["evidence", "Evidence", FileText],
-            ["collaboration", "War room", MessagesSquare],
-          ].map(([id, label, Icon]) => {
-            const I = Icon as typeof Network;
-            return (
-              <button
-                key={String(id)}
-                className={tab === id ? "rail-button active" : "rail-button"}
-                aria-label={String(label)}
-                aria-current={tab === id ? "page" : undefined}
-                title={String(label)}
-                onClick={() => setTab(String(id))}
-              >
-                <I size={19} />
-              </button>
-            );
-          })}
-        </nav>
-      </aside>
-      <a href="/" className="text-button">
-        ← Mission Control preview
-      </a>
+    <ApplicationFrame title="Incident workspace" actions={accountControls} active={tab} onNavigate={setTab} synthetic={s.incident.classification === "SYNTHETIC"}>
       <ConnectionStatus state={state.connection} />
-      <IncidentHeading incident={s.incident} actions={client ? <ProtectedDownloadControl client={client} incidentId={incidentId} reportAttempt={reportAttempt} disabled={disabled || !state.capabilities.includes("EXPORT")} /> : undefined} />
-      {client && <IncidentLifecycle snapshot={s} client={client} disabled={disabled} canManage={state.capabilities.includes("MANAGE_INCIDENT")} command={state.command} />}
-      {client && <IncidentRetention key={incidentId} snapshot={s} userId={state.session?.user.id} client={client} disabled={disabled} command={state.command} />}
-      <nav className="tabs" aria-label="Incident sections">
-        {[
-          "overview",
-          "graph",
-          "investigation",
-          "evidence",
-          "collaboration",
-        ].map((t) => (
-          <button
-            className={tab === t ? "selected" : ""}
-            aria-current={tab === t ? "page" : undefined}
-            key={t}
-            onClick={() => setTab(t)}
-          >
-            {t}
-          </button>
-        ))}
-      </nav>
+      <IncidentHeading incident={s.incident} actions={<Button variant="outline" onClick={()=>setTab("reports")}>Reports & export</Button>} />
+      {client && <div hidden={tab !== "overview"} className="bb-management"><IncidentLifecycle snapshot={s} client={client} disabled={disabled} canManage={state.capabilities.includes("MANAGE_INCIDENT")} command={state.command} /></div>}
+
+      <nav className="tabs bb-incident-tabs" aria-label="Incident sections">{incidentSections.map(({id,label})=><button type="button" key={id} className={tab===id ? "selected" : ""} aria-current={tab===id ? "page" : undefined} onClick={()=>setTab(id)}>{label}{tab===id && <motion.span className="bb-tab-indicator" layoutId="incident-section-indicator" transition={{duration:uiMotion.duration,ease:[0.23,1,0.32,1]}} />}</button>)}</nav>
       {state.error && (
         <div className="impact-warning" role="alert">
           {state.error}
         </div>
       )}
       {state.receipt && (
-        <p role="status" className="teal command-receipt">
-          {state.receipt}
-        </p>
+        <CommandReceipt receipt={state.receipt} />
       )}
       <AuthenticationRecovery error={state.authenticationError} />
       {tab === "overview" && (
@@ -236,6 +190,7 @@ export function ConnectedIncident({
             nodes={nodes}
             edges={edges}
             containmentCoverage={latestSimulation?.diff.containmentCoverage}
+            containmentVersion={latestSimulation?.parentVersion}
             assets={s.assets.map((a) => ({
               id: a.id,
               name: a.name,
@@ -250,49 +205,42 @@ export function ConnectedIncident({
             onNavigate={(t) => setTab(t === "twin" ? "graph" : t)}
             decisions={
               <div className="decision-body compact-decision">
-                {s.proposals.length ? (
-                  s.proposals.map((p) => (
-                    <div key={p.id}>
-                      <span className="state-chip">{p.status}</span>
-                      <h2>{p.action.type.replaceAll("_", " ")}</h2>
-                      <p>{p.rationale}</p>
-                      <a
-                        href="#approval-review"
-                        className="button button-outline"
-                      >
-                        Review decision →
-                      </a>
-                    </div>
-                  ))
-                ) : (
-                  <p>No response proposals.</p>
-                )}
+                {overviewProposal ? <div>
+                  <span className="state-chip" data-status={overviewProposal.status}>{displayLabel(overviewProposal.status)}</span>
+                  {isHistorical(overviewProposal) && <p className="small muted">Latest historical response · no current proposal awaiting action</p>}
+                  <h2>{displayLabel(overviewProposal.action.type)}</h2><p>{overviewProposal.rationale}</p>
+                  <Button variant="outline" onClick={()=>{setResponseFilter(isHistorical(overviewProposal) ? "history" : "current");setTab("responses");}}>Review response →</Button>
+                  {proposals.length>1 && <p className="small muted">{proposals.length} proposals available in Responses, including history.</p>}
+                </div> : <p>No response proposals recorded.</p>}
               </div>
             }
             timeline={
               <div className="timeline">
                 {sortAuditEvents(s.auditEvents).slice(-4).map((e) => (
                   <div key={e.id} className="chronology-event">
-                    <strong>{e.verb}</strong>
-                    <small><time dateTime={e.createdAt}>{e.createdAt}</time></small>
+                    <strong>{displayLabel(e.verb.replace(/([a-z])([A-Z])/g,"$1 $2"))}</strong>
+                    <small><time dateTime={e.createdAt}>{new Date(e.createdAt).toLocaleString()}</time></small>
                     <p>{e.detail}</p>
                   </div>
                 ))}
-                <a className="text-button" href="#server-audit-timeline">Filter the server audit timeline →</a>
+                <button className="text-button" onClick={()=>setTab("reports")}>Inspect recorded activity →</button>
               </div>
             }
           />
+        </>
+      )}
+      {tab === "responses" && <>
+        <div className="bb-section-heading"><h2>Response decisions</h2><p>Preview service impact, request separate human approval, then verify synthetic execution.</p></div>
           {client && <ManualProposal snapshot={s} client={client} disabled={disabled} canPropose={state.capabilities.includes("PROPOSE") && s.memberships.some(m=>m.active && m.userId===state.session?.user.id && m.role!=="AI_SERVICE")} command={state.command} />}
-          <div id="approval-review" className="incident-grid approval-review">
+          <div id="approval-review" className="bb-responses-layout approval-review">
             <section className="panel">
               <div className="panel-title">
                 <h2>Response decisions</h2>
                 <span>Scenario v{s.incident.scenarioVersion}</span>
               </div>
-              {!s.proposals.length && (
-                <p className="empty">No response proposals.</p>
-              )}
-              {s.proposals.map((p) => {
+              <div className="bb-response-toolbar"><div className="bb-segmented" aria-label="Response proposal filter">{[["current","Current"],["history","History"],["all","All proposals"]].map(([value,label])=><button key={value} aria-pressed={responseFilter===value} onClick={()=>setResponseFilter(value)}><span>{label}</span></button>)}</div><span className="small muted">{visibleProposals.length} of {proposals.length} recorded proposals</span></div>
+              {!visibleProposals.length && <div className="bb-empty"><h3>{responseFilter==="current" ? "No proposals awaiting action" : "No proposals in this view"}</h3><p>Every recorded proposal remains available in history.</p>{!!proposals.length && <Button variant="outline" onClick={()=>setResponseFilter("all")}>View all proposals</Button>}</div>}
+              {visibleProposals.map((p) => {
                 const simulation = s.simulations.find(
                   (b) => b.id === p.simulationId,
                 );
@@ -302,9 +250,9 @@ export function ConnectedIncident({
                 const completed = ["VERIFIED_SUCCESS", "VERIFIED_PARTIAL", "VERIFIED_FAILED"].includes(p.status);
                 return (
                   <article className="decision-body approval-card" key={p.id}>
-                    <h2>{p.action.type.replaceAll("_", " ")}</h2>
+                    <h2>{displayLabel(p.action.type)}</h2>
                     <p>{p.rationale}</p>
-                    <span className="state-chip">{p.status}</span>
+                    <span className="state-chip" data-status={p.status}>{displayLabel(p.status)}</span>
                     <ResponseTargets action={p.action} incidentId={incidentId} assets={s.assets} edges={s.edges} />
                     {client && <AcknowledgeControl snapshot={s} objectId={p.id} userId={state.session?.user.id} client={client} disabled={disabled || !state.capabilities.includes("COLLABORATE")} command={state.command} />}
                     {!completed && p.requestedBy === state.session?.user.id && <p className="impact-warning">You requested this proposal. Another authorized human must approve it; ask an assigned investigator or commander to participate.</p>}
@@ -405,11 +353,10 @@ export function ConnectedIncident({
                 );
               })}
             </section>
-            <IncidentTimeline key={incidentId} snapshot={s} onInspect={setSelected} />
+
           </div>
-        </>
-      )}
-      {client && (tab === "graph" || tab === "overview") && <ScenarioHistory snapshot={s} client={client} disabled={disabled} canRead={state.capabilities.includes("SIMULATE") && s.memberships.some(m=>m.active && m.userId===state.session?.user.id && m.role!=="AI_SERVICE")} canRestore={state.capabilities.includes("RESTORE_SIMULATION")} command={state.command} />}
+        </>}
+      {client && (tab === "graph" || tab === "reports") && <ScenarioHistory snapshot={s} client={client} disabled={disabled} canRead={state.capabilities.includes("SIMULATE") && s.memberships.some(m=>m.active && m.userId===state.session?.user.id && m.role!=="AI_SERVICE")} canRestore={state.capabilities.includes("RESTORE_SIMULATION")} command={state.command} />}
       {tab === "graph" && (
         <section className="panel">
           <DetailedTwin nodes={[...nodes,...relatedNodes]} edges={edges} view={twinView} setView={setTwinView} onInspect={setSelected} />
@@ -437,7 +384,7 @@ export function ConnectedIncident({
       )}
       {tab === "investigation" && (
         <section className="panel decision-body">
-          <h2>Investigation Studio</h2>
+          <h2>Investigation</h2><p className="bb-section-description">Set a bounded objective. Follow cited findings and server-recorded progress.</p>
           {!["INVESTIGATING", "CONTAINMENT_PENDING", "CONTAINING"].includes(s.incident.status) && (
             <p className="impact-warning">
               Response proposals require INVESTIGATING, CONTAINMENT_PENDING or CONTAINING.
@@ -475,8 +422,8 @@ export function ConnectedIncident({
             <div className="trace-step" key={i.id}>
               <div>
                 <h3>{i.objective}</h3>
-                <p>
-                  {i.status} · {i.provider ?? "Provider not yet confirmed"} /{" "}
+                <p data-status={i.status}>
+                  {displayLabel(i.status)} · {i.provider ?? "Provider not yet confirmed"} /{" "}
                   {i.model ?? "Model not yet confirmed"}
                 </p>
                 {client && <CancelInvestigation run={i} client={client} disabled={disabled} allowed={state.capabilities.includes("INVESTIGATE") && s.memberships.some(m=>m.active && m.userId===state.session?.user.id && m.role!=="AI_SERVICE" && (i.requestedBy===m.userId || m.role==="COMMANDER"))} command={state.command} />}
@@ -498,7 +445,7 @@ export function ConnectedIncident({
                       <h3>{f.title}</h3>
                       <p>{f.summary}</p>
                       <small>
-                        {f.confidence} confidence · {f.verificationStatus}
+                        {displayLabel(f.confidence)} confidence · {displayLabel(f.verificationStatus)}
                       </small>
                       <EvidenceCitations
                         ids={f.evidenceIds}
@@ -524,7 +471,8 @@ export function ConnectedIncident({
             {s.messages.map((m) => (
               <div className="chat-message" key={m.id}>
                 <div>
-                  <strong>{m.authorId}</strong>
+                  <strong>{responderLabel(m.authorId,s.memberships,state.session?.user.id)}</strong>
+                  <details className="small"><summary>Responder identity</summary><code>{m.authorId}</code></details>
                   <small>{m.createdAt}</small>
                   <p>{m.text}</p>
                   {client && <AcknowledgeControl snapshot={s} objectId={m.id} userId={state.session?.user.id} client={client} disabled={disabled || !state.capabilities.includes("COLLABORATE")} command={state.command} />}
@@ -560,10 +508,13 @@ export function ConnectedIncident({
           <section className="panel decision-body">
             <h2>Assignments</h2>
             {s.tasks.map((t) => (
-              <p key={t.id}>
-                {t.title} · {t.state}
-                <small>{t.assigneeId ?? "Unassigned"}</small>
-              </p>
+              <div key={t.id}>
+                <p>
+                {t.title} · {displayLabel(t.state)}
+                <small>{t.assigneeId ? responderLabel(t.assigneeId,s.memberships,state.session?.user.id) : "Unassigned"}</small>
+                </p>
+                {t.assigneeId && <details className="small"><summary>Assignee identity</summary><code>{t.assigneeId}</code></details>}
+              </div>
             ))}
             <h3>Recent presence</h3>
             {s.presence
@@ -571,14 +522,24 @@ export function ConnectedIncident({
               .sort((a,b)=>Date.parse(b.lastSeen)-Date.parse(a.lastSeen))
               .filter((p,index,rows)=>rows.findIndex(row=>row.userId===p.userId)===index)
               .map((p) => (
-                <p key={p.id}>
-                  {p.userId}
+                <div key={p.id}>
+                  <p>
+                  {responderLabel(p.userId,s.memberships,state.session?.user.id)}
                   <small>Seen {p.lastSeen}</small>
-                </p>
+                  </p>
+                  <details className="small"><summary>Responder identity</summary><code>{p.userId}</code></details>
+                </div>
               ))}
           </section>
         </div>
       )}
+      <section hidden={tab !== "reports"} className="bb-reports">
+        <div className="bb-section-heading"><h2>Reports & preservation</h2><p>Export the server-generated record, inspect chronology and review preservation settings.</p></div>
+        <section className="panel decision-body"><h3>Incident report</h3><p>Protected exports include recorded evidence, investigation, decisions and verification.</p>{client && <ProtectedDownloadControl client={client} incidentId={incidentId} reportAttempt={reportAttempt} disabled={disabled || !state.capabilities.includes("EXPORT")} />}
+        {s.reports.length ? <div className="bb-report-list">{s.reports.map(report=><button className="button button-outline" key={report.id} onClick={()=>setSelected(report.id)}>Report version {report.version} · {new Date(report.createdAt).toLocaleString()}</button>)}</div> : <p className="small muted">No saved report versions recorded.</p>}</section>
+        {client && <IncidentRetention key={incidentId} snapshot={s} userId={state.session?.user.id} client={client} disabled={disabled} command={state.command} />}
+        <IncidentTimeline key={incidentId} snapshot={s} onInspect={setSelected} />
+      </section>
       <AnimatePresence>
         {tab === "collaboration" && client && (
           <IncidentTeam
@@ -596,6 +557,6 @@ export function ConnectedIncident({
             onInspect={setSelected} onDismiss={() => setSelected(null)} />
         )}
       </AnimatePresence>
-    </main>
+    </ApplicationFrame>
   );
 }

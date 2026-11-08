@@ -1,7 +1,7 @@
 "use client";
 import { useState, type ReactNode } from "react";
 import type { Incident } from "@/lib/contracts";
-import { ThemeControl } from "./theme";
+import { displayLabel } from "./ui/labels";
 import { Button } from "./ui/button";
 
 export function IncidentHeading({ incident, actions }: { incident: Pick<Incident, "id" | "title" | "description" | "classification" | "severity" | "status">; actions?: ReactNode }) {
@@ -10,7 +10,7 @@ export function IncidentHeading({ incident, actions }: { incident: Pick<Incident
   return <header className="page-heading live-incident-heading">
     <div className="incident-heading-content">
       <div className="incident-heading-meta">
-        <span>{incident.classification}</span>
+        <span>{displayLabel(incident.classification)}</span>
         <details className="incident-id-details"><summary title={incident.id}>Incident ID · {shortId}</summary>
           <code className="canonical-incident-id">{incident.id}</code>
           <Button type="button" variant="outline" size="sm" onClick={async () => {
@@ -24,8 +24,8 @@ export function IncidentHeading({ incident, actions }: { incident: Pick<Incident
       <p>{incident.description}</p>
     </div>
     <div className="incident-heading-actions">
-      <ThemeControl />{actions}
-      <span className="severity-chip">{incident.severity} · {incident.status}</span>
+      {actions}
+      <span className="severity-chip" data-status={incident.status}>{displayLabel(incident.severity)} · {displayLabel(incident.status)}</span>
     </div>
   </header>;
 }

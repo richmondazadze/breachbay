@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { motion } from "motion/react";
 import {
   ReactFlow,
@@ -8,7 +8,10 @@ import {
   Position,
   type Node,
   type Edge,
+  type ReactFlowInstance,
+  type Viewport,
 } from "@xyflow/react";
+import { displayLabel } from "./ui/labels";
 import { EvidenceCitations } from "./decision-details";
 import { useInterfaceMotion } from "@/hooks/use-interface-motion";
 import { Search, Network, ArrowUpRight, FileText } from "./ui/icons";
@@ -25,11 +28,14 @@ interface Props {
   onNavigate: (tab: string) => void;
   synthetic?: boolean;
   containmentCoverage?: number;
+  containmentVersion?: number;
 }
 export function OperationalOverview(p: Props) {
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState("all");
   const [list, setList] = useState(false);
+  const camera = useRef<Viewport | undefined>(undefined);
+  const flow = useRef<ReactFlowInstance | null>(null);
   const { duration, instant } = useInterfaceMotion();
   const shown = p.assets.filter(
     (a) =>
@@ -52,7 +58,7 @@ export function OperationalOverview(p: Props) {
       // Fixed projection: tighter horizontal ranks and separated branches fill
       // the overview without recalculating layout as live state changes.
       position: { x: n.position.x * 0.6, y: (rankCounts.get(n.position.x) === 1 ? centerY : n.position.y) * 1.2 },
-      style: { ...n.style, width: 118 },
+      style: { ...n.style, width: 154 },
       data: {
         ...n.data,
         label: (
@@ -89,9 +95,7 @@ export function OperationalOverview(p: Props) {
           </div>
           <div className="scope-summary">
             <strong>
-              Follow the evidence.
-              <br />
-              Protect the critical path.
+              Incident at a glance
             </strong>
             <p>{p.assessment}</p>
             <dl>
@@ -105,7 +109,7 @@ export function OperationalOverview(p: Props) {
               </div>
               <div>
                 <dt>External AI</dt>
-                <dd>{p.investigationStatus}</dd>
+                <dd>{displayLabel(p.investigationStatus)}</dd>
               </div>
             </dl>
           </div>
@@ -144,7 +148,7 @@ export function OperationalOverview(p: Props) {
             <h2>Investigation</h2>
             <Search size={16} />
           </div>
-          <p>{p.investigationStatus}</p>
+          <p data-status={p.investigationStatus}>{displayLabel(p.investigationStatus)}</p>
           <small>
             Findings require cited evidence. Unverified relationships remain
             hypotheses.
@@ -189,9 +193,8 @@ export function OperationalOverview(p: Props) {
               <option value="all">All assets</option>
               <option value="risk">At risk / uncertain</option>
             </select>
-            <button className="text-button" onClick={() => setList(!list)}>
-              {list ? "Graph" : "List"}
-            </button>
+            <div className="bb-segmented" aria-label="Topology view">{[false,true].map(isList=><button key={String(isList)} aria-pressed={list===isList} onClick={()=>setList(isList)}><span>{isList ? "List" : "Graph"}</span></button>)}</div>
+            {!list && <button className="text-button" onClick={()=>void flow.current?.fitView({padding:0.14,maxZoom:1,duration:duration*1000})}>Fit diagram</button>}
           </div>
           <div className="graph-legend">
             <span>
@@ -203,12 +206,12 @@ export function OperationalOverview(p: Props) {
               Hypothesis
             </span>
           </div>
-          {list ? (
+          <motion.div key={list ? "list" : "graph"} initial={instant ? false : {opacity:0}} animate={{opacity:1}} transition={{duration,ease:[0.23,1,0.32,1]}}>{list ? (
             <div className="asset-list">
               {shown.map((a) => (
                 <button key={a.id} onClick={() => p.onInspect(a.id)}>
                   <strong>{a.name}</strong>
-                  <span className="state-chip">{a.state}</span>
+                  <span className="state-chip" data-status={a.state}>{displayLabel(a.state)}</span>
                   <ArrowUpRight size={13} />
                 </button>
               ))}
@@ -216,23 +219,27 @@ export function OperationalOverview(p: Props) {
           ) : (
             <div className="graph-canvas topology-canvas">
               {nodes.length ? (
-                <ReactFlow
+                <ReactFlow<Node, Edge>
                   nodes={nodes}
                   edges={edges}
-                  fitView
+                  fitView={!camera.current}
+                  defaultViewport={camera.current}
+                  onInit={instance=>{flow.current=instance;}}
+                  onMoveEnd={(_,viewport)=>{camera.current=viewport;}}
                   fitViewOptions={{ padding: 0.08, maxZoom: 1 }}
                   nodesConnectable={false}
                   nodesDraggable={false}
                   onNodeClick={(_, n) => p.onInspect(n.id)}
                 >
                   <Background color="var(--graph-grid)" gap={26} />
-                  <Controls showInteractive={false} />
+                  <Controls showInteractive={false} showFitView={false} />
                 </ReactFlow>
               ) : (
                 <div className="empty">No assets match this scope.</div>
               )}
             </div>
           )}
+          </motion.div>
           <div className="topology-metrics">
             <div>
               <strong>{p.assets.length}</strong>
@@ -257,13 +264,13 @@ export function OperationalOverview(p: Props) {
               <span>
                 {p.containmentCoverage === undefined
                   ? "Containment coverage unavailable"
-                  : "Simulated containment coverage"}
+                  : p.containmentVersion === undefined ? "Latest simulated containment preview" : `Containment preview for scenario v${p.containmentVersion}`}
               </span>
             </div>
           </div>
         </section>
         <div className="panel topology-note">
-          <span className="eyebrow">OPERATIONAL BOUNDARY</span>
+          <span className="eyebrow">Operational boundary</span>
           <p>
             {p.synthetic
               ? "Synthetic scenario preview. No live model, authentication or response execution is connected."

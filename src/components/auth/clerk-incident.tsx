@@ -2,6 +2,7 @@
 import { LogoutControl } from "./logout-control";
 import { useAuth } from "@clerk/nextjs";
 import { useMemo, useCallback } from "react";
+import { ApplicationFrame } from "../application-frame";
 import { ConnectedIncident } from "../connected-incident";
 import { createClerkIncidentClient } from "@/hooks/clerk-incident-client";
 export function ClerkIncident({ incidentId }: { incidentId: string }) {
@@ -27,31 +28,24 @@ function AuthenticatedIncident({ incidentId }: { incidentId: string }) {
   );
   if (!isLoaded)
     return (
-      <main className="connected-main" role="status">
-        Loading responder session…
-      </main>
+      <ApplicationFrame title="Incident workspace"><p role="status">Loading responder session…</p></ApplicationFrame>
     );
   if (!isSignedIn)
     return (
-      <main className="connected-main">
+      <ApplicationFrame title="Incident workspace">
         <h1>Sign in to join this incident</h1>
         <p>Incident permissions are checked after authentication.</p>
         <a className="button button-primary" href="/sign-in">
           Responder sign in
         </a>
-      </main>
+      </ApplicationFrame>
     );
   return (
-    <>
-      <div className="identity-toolbar">
-        <span>Dedicated BreachBay account</span>
-        <LogoutControl />
-      </div>
       <ConnectedIncident
         key={sessionId}
         incidentId={incidentId}
         client={client}
+        accountControls={<LogoutControl />}
       />
-    </>
   );
 }

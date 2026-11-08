@@ -8,6 +8,7 @@ import type {
 import type { IncidentClient } from "@/hooks/use-incident";
 import { AcknowledgeControl } from "./incident-operations";
 import { Button } from "./ui/button";
+import { displayLabel, responderLabel } from "./ui/labels";
 const roles: IncidentRole[] = [
   "COMMANDER",
   "INVESTIGATOR",
@@ -83,7 +84,7 @@ export function IncidentTeam({
                 .filter((m) => m.active && m.role !== "AI_SERVICE")
                 .map((m) => (
                   <option value={m.userId} key={m.id}>
-                    {m.userId} · {m.role}
+                    {responderLabel(m.userId,s.memberships,userId)}
                   </option>
                 ))}
             </select>
@@ -114,12 +115,12 @@ export function IncidentTeam({
                 }
               >
                 <option value="">Unassigned</option>
-                {t.assigneeId && !s.memberships.some(m => m.userId === t.assigneeId && m.active && m.role !== "AI_SERVICE") && <option value={t.assigneeId}>Assignee currently unavailable · {t.assigneeId}</option>}
+                {t.assigneeId && !s.memberships.some(m => m.userId === t.assigneeId && m.active && m.role !== "AI_SERVICE") && <option value={t.assigneeId}>Assignee unavailable · {responderLabel(t.assigneeId,s.memberships,userId)}</option>}
                 {s.memberships
                   .filter((m) => m.active && m.role !== "AI_SERVICE")
                   .map((m) => (
                     <option value={m.userId} key={m.id}>
-                      {m.userId}
+                      {responderLabel(m.userId,s.memberships,userId)}
                     </option>
                   ))}
               </select>
@@ -155,9 +156,9 @@ export function IncidentTeam({
         <h2>Scoped membership</h2>
         {s.memberships.map((m) => (
           <div className="membership-row" key={m.id}>
-            <code>{m.userId}</code>
+            <div><strong>{responderLabel(m.userId,s.memberships,userId)}</strong><details className="small"><summary>Responder identity</summary><code>{m.userId}</code></details></div>
             <span className="state-chip">
-              {m.role} · {m.active ? "Active" : "Revoked"}
+              {displayLabel(m.role)} · {m.active ? "Active" : "Revoked"}
             </span>
             {canManage && (
               <Button

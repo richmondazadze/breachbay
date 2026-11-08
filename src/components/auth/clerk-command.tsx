@@ -12,25 +12,28 @@ import { LogoutControl } from "./logout-control";
 import { AuthenticationRecovery } from "./authentication-recovery";
 import { currentConnectionCallback } from "@/hooks/connection-callback";
 import { subscriptionFailureMessage } from "@/hooks/subscription-failure";
-import { ThemeControl } from "../theme";
+import { ApplicationFrame } from "../application-frame";
+import { MissionDashboard, type MissionActivity } from "../mission-dashboard";
+import { CommandReceipt } from "../command-receipt";
+import { displayLabel } from "../ui/labels";
 import { Button } from "../ui/button";
 import type { CommandError, Severity, User } from "@/lib/contracts";
 export function ClerkCommand() {
   if (!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
     return (
-      <main className="connected-main">
+      <ApplicationFrame>
         <h1>Responder login is not configured</h1>
         <a className="button button-outline" href="/sign-in">
           Sign-in configuration
         </a>
-      </main>
+      </ApplicationFrame>
     );
   return <CommandList />;
 }
 function CommandList() {
   const { isLoaded, isSignedIn, getToken, userId, sessionId } = useAuth();
   const [incidents, setIncidents] = useState<
-    { id: string; title: string; severity: string; status: string; openTasks: number; myTasks: number; pendingApprovals: number; lastActivity: string }[]
+    { id: string; title: string; severity: string; status: string; classification?: string; openTasks: number; myTasks: number; pendingApprovals: number; lastActivity: string }[]
   >([]);
   const [invitations, setInvitations] = useState<
     {
@@ -41,6 +44,8 @@ function CommandList() {
       expiresAt: number;
     }[]
   >([]);
+  const [activity, setActivity] = useState<MissionActivity[]>([]);
+  const [responders, setResponders] = useState<{userId: string; role: string}[]>([]);
   const [profile, setProfile] = useState<User | null>(null);
   const [canCreate, setCanCreate] = useState(false);
   const [status, setStatus] = useState("Connecting");
@@ -61,6 +66,8 @@ function CommandList() {
     setReceipt("");
     setAuthenticationError(null);
     setIncidents([]);
+      setActivity([]);
+      setResponders([]);
     setInvitations([]);
     setProfile(null);
     setCanCreate(false);
@@ -70,6 +77,8 @@ function CommandList() {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const clear = () => {
       setIncidents([]);
+      setActivity([]);
+      setResponders([]);
       setInvitations([]);
       setProfile(null);
       setCanCreate(false);
@@ -97,6 +106,8 @@ function CommandList() {
       const tasks = [...conn.db.scopedTasks.iter()];
       const proposals = [...conn.db.scopedProposals.iter()];
       const audits = [...conn.db.scopedAuditEvents.iter()];
+      setActivity(audits);
+      setResponders([...conn.db.scopedMemberships.iter()].filter(m=>m.active && m.role!=="AI_SERVICE").filter((m,index,rows)=>rows.findIndex(row=>row.userId===m.userId && row.role===m.role)===index).map(m=>({userId:m.userId,role:m.role})));
       setIncidents([...conn.db.scopedIncidents.iter()].map(incident => {
         const openTasks = tasks.filter(t=>t.incidentId===incident.id && t.state!=="DONE");
         const recordedTimes = [incident.updatedAt,...audits.filter(a=>a.incidentId===incident.id).map(a=>a.createdAt)];
@@ -229,63 +240,31 @@ function CommandList() {
   }
   if (!isLoaded)
     return (
-      <main className="connected-main" role="status">
-        Loading session…
-      </main>
+      <ApplicationFrame><p role="status">Loading session…</p>
+      </ApplicationFrame>
     );
   if (!isSignedIn)
     return (
-      <main className="connected-main">
+      <ApplicationFrame>
         <h1>Responder sign in required</h1>
         <a className="button button-primary" href="/sign-in">
           Sign in to BreachBay
         </a>
-      </main>
+      </ApplicationFrame>
     );
   const disabled =
     pending ||
     !current.current?.isActive ||
     status !== "Server-confirmed scoped incidents";
   return (
-    <main className="connected-main">
-      <header className="page-heading">
-        <div>
-          <a className="brand" href="/command">
-            <img src="/brand/harbor.svg" width="32" height="32" alt="" />
-            BreachBay.
-          </a>
-          <h1>Mission Control</h1>
-          <p role="status">{status}</p>
-        </div>
-        <div className="workflow-row">
-          <ThemeControl />
-          <LogoutControl />
-        </div>
-      </header>
-      {error && (
-        <p className="workflow-error" role="alert">
-          {error}
-        </p>
-      )}
-      {receipt && (
-        <p className="teal" role="status">
-          {receipt}
-        </p>
-      )}
+    <ApplicationFrame actions={<LogoutControl />}>
+      <div className="bb-connection-note"><p role="status">{status === "Server-confirmed scoped incidents" ? "Connected to your workspace" : status}</p><details><summary>Connection details</summary><p>{status}</p></details></div>
+      {error && <p className="workflow-error" role="alert">{error}</p>}
+      {receipt && <CommandReceipt receipt={receipt} />}
       <AuthenticationRecovery error={authenticationError} />
-      <ConfigurationHealth />
-      <section className="panel">
-        <div className="panel-title">
-          <h2>Your assigned incidents</h2>
-          <Button
-            variant="outline"
-            disabled={disabled || !canCreate}
-            onClick={() => setShowCreate(!showCreate)}
-          >
-            {showCreate ? "Close incident form" : "Create incident"}
-          </Button>
-        </div>
-        {showCreate && (
+      <MissionDashboard incidents={incidents} activity={activity} responders={responders} confirmed={status === "Server-confirmed scoped incidents"}
+        createControl={<Button disabled={disabled || !canCreate} onClick={()=>setShowCreate(!showCreate)}>{showCreate ? "Close incident form" : "Create incident"}</Button>}
+        createForm={showCreate ? (
           <form
             className="command-form"
             onSubmit={async (e) => {
@@ -345,34 +324,9 @@ function CommandList() {
               Create synthetic incident
             </Button>
           </form>
-        )}
-        <div className="asset-list">
-          {incidents.map((i) => (
-            <a
-              key={i.id}
-              className="incident-card"
-              href={`/incidents/${encodeURIComponent(i.id)}`}
-            >
-              <span className="severity-chip">{i.severity}</span>
-              <h2>{i.title}</h2>
-              <span className="state-chip">{i.status}</span>
-              <dl className="mission-projections"><div><dt>Open tasks</dt><dd>{i.openTasks} · {i.myTasks} assigned to you</dd></div><div><dt>Pending approvals</dt><dd>{i.pendingApprovals}</dd></div><div><dt>Last recorded activity</dt><dd><time dateTime={i.lastActivity}>{new Date(i.lastActivity).toLocaleString()}</time></dd></div></dl>
-            </a>
-          ))}
-        </div>
-        {!incidents.length && (
-          <p className="empty">
-            No assigned incidents available. Accept an invitation or request a
-            commander grant.
-          </p>
-        )}
-        {!canCreate && profile && (
-          <p className="panel-foot">
-            Incident creation requires an explicitly authorized commander or
-            platform administrator.
-          </p>
-        )}
-      </section>
+        ) : undefined} />
+      {!canCreate && profile && <p className="bb-permission-note">Incident creation requires an explicitly authorized commander or platform administrator.</p>}
+      <ConfigurationHealth />
       <section className="panel" style={{ marginTop: 20 }}>
         <div className="panel-title">
           <h2>Scoped invitations</h2>
@@ -382,9 +336,10 @@ function CommandList() {
             .filter((i) => !i.accepted)
             .map((i) => (
               <div key={i.id}>
-                <p>
-                  <code>{i.incidentId}</code> · {i.role}
-                </p>
+                <div>
+                  {displayLabel(i.role)} invitation
+                  <details className="small"><summary>Incident reference</summary><code>{i.incidentId}</code></details>
+                </div>
                 <p className="small muted">
                   Expires {new Date(i.expiresAt * 1000).toLocaleString()}
                 </p>
@@ -409,8 +364,8 @@ function CommandList() {
         </div>
       </section>
       <a className="text-button" href="/">
-        Synthetic interface preview →
+        BreachBay home →
       </a>
-    </main>
+    </ApplicationFrame>
   );
 }

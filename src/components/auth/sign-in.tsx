@@ -16,10 +16,10 @@ export function BreachBaySignIn({ creatingAccount = false }: { creatingAccount?:
       </a>
       <div className="auth-grid">
         <section>
-          <div className="eyebrow">INDEPENDENT INCIDENT COMMAND</div>
+          <div className="eyebrow">Your incident workspace</div>
           <h1>{creatingAccount ? "Create your responder account" : "Sign in to BreachBay"}</h1>
           <p>
-            {creatingAccount ? "Create a dedicated BreachBay account and complete Clerk’s email verification." : "Use your dedicated responder account to join the command center."}
+            {creatingAccount ? "Create your BreachBay account, verify your email, and join your team’s incident workspace." : "Use your responder account to access the incidents assigned to you."}
           </p>
           <div className="independent">
             <span>
@@ -28,8 +28,8 @@ export function BreachBaySignIn({ creatingAccount = false }: { creatingAccount?:
             </span>
           </div>
           <p className="small muted">
-            Authentication establishes your identity. Membership and approval
-            permissions are enforced by the incident backend.
+            Your account identifies you. Your incident role determines what you
+            can review, approve and execute.
           </p>
           <p>
             <a className="button button-outline" href={creatingAccount ? "/sign-in" : "/sign-up"}>
@@ -37,7 +37,7 @@ export function BreachBaySignIn({ creatingAccount = false }: { creatingAccount?:
             </a>
           </p>
           <a className="text-button" href="/">
-            Explore the synthetic preview →
+            Explore BreachBay →
           </a>
         </section>
         <section className="auth-card" aria-label={creatingAccount ? "Responder account creation" : "Responder sign in"}>

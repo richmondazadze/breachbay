@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { IncidentClient } from "@/hooks/use-incident";
 import type { ActionType, CommandResult, IncidentSnapshot, IncidentStatus, Finding, GraphEdgeType, Confidence } from "@/lib/contracts";
 import { Button } from "./ui/button";
+import { displayLabel } from "./ui/labels";
 export type RunCommand = (operation: () => Promise<CommandResult<{ id: string }>>) => Promise<boolean>;
 const transitions: Record<IncidentStatus, IncidentStatus[]> = { NEW: ["TRIAGED"], TRIAGED: ["INVESTIGATING"], INVESTIGATING: ["CONTAINMENT_PENDING"], CONTAINMENT_PENDING: ["CONTAINING"], CONTAINING: ["RECOVERING"], RECOVERING: ["RESOLVED"], RESOLVED: ["ARCHIVED", "INVESTIGATING"], ARCHIVED: [] };
 const meta = (incidentId: string) => ({ incidentId, idempotencyKey: crypto.randomUUID(), correlationId: crypto.randomUUID() });
@@ -15,10 +16,10 @@ function EvidenceSelection({ snapshot, selected, onChange, disabled }: {snapshot
 export function IncidentLifecycle({ snapshot, client, disabled, canManage, command }: {snapshot: IncidentSnapshot; client: IncidentClient; disabled: boolean; canManage: boolean; command: RunCommand}) {
   const [target, setTarget] = useState<IncidentStatus | "">(""); const [reason, setReason] = useState("");
   const available = transitions[snapshot.incident.status];
-  return <details className="panel decision-body lifecycle-control"><summary>Incident lifecycle · {snapshot.incident.status}</summary>
+  return <details className="panel decision-body lifecycle-control"><summary>Incident lifecycle · {displayLabel(snapshot.incident.status)}</summary>
     <p className="small">Lifecycle changes are server confirmed. Changing status does not establish containment or restore a service.</p>
     {canManage && available.length ? <form onSubmit={async e => {e.preventDefault(); if (!target || !available.includes(target)) return; if (await command(()=>client.transitionIncident({...meta(snapshot.incident.id),status:target,reason:reason.trim(),expectedVersion:snapshot.incident.version}))) {setTarget("");setReason("");} }}>
-      <label className="field-label">Next status<select required value={available.includes(target as IncidentStatus) ? target : ""} disabled={disabled} onChange={e=>setTarget(e.target.value as IncidentStatus)}><option value="">Choose transition</option>{available.map(status=><option key={status}>{status}</option>)}</select></label>
+      <label className="field-label">Next status<select required value={available.includes(target as IncidentStatus) ? target : ""} disabled={disabled} onChange={e=>setTarget(e.target.value as IncidentStatus)}><option value="">Choose transition</option>{available.map(status=><option key={status} value={status}>{displayLabel(status)}</option>)}</select></label>
       <label className="field-label">Reason<textarea required maxLength={2000} value={reason} disabled={disabled} onChange={e=>setReason(e.target.value)} /></label>
       <Button disabled={disabled || !reason.trim() || !available.includes(target as IncidentStatus)}>Submit status change</Button>
     </form> : <p className="small muted">{available.length ? "Incident management permission required." : "This lifecycle state has no further transitions."}</p>}
@@ -44,7 +45,7 @@ export function ManualProposal({ snapshot: s, client, disabled, canPropose, comm
 }
 export function FindingReview({finding,incidentId,client,disabled,canManage,command}:{finding:Finding;incidentId:string;client:IncidentClient;disabled:boolean;canManage:boolean;command:RunCommand}) {
   const [reason,setReason]=useState("");
-  if(finding.verificationStatus!=="HYPOTHESIS")return <p className="small">Review status: {finding.verificationStatus}</p>;
+  if(finding.verificationStatus!=="HYPOTHESIS")return <p className="small">Review status: {displayLabel(finding.verificationStatus)}</p>;
   return <details><summary>Review finding against evidence</summary><p className="small">Acceptance records human evidence review. It does not automatically create a communication route or verify an inferred relationship.</p><label className="field-label">Verification reason<textarea maxLength={1000} value={reason} disabled={disabled || !canManage} onChange={e=>setReason(e.target.value)} /></label><Button disabled={disabled || !canManage || !reason.trim()} onClick={()=>void command(()=>client.acceptFinding({...meta(incidentId),findingId:finding.id,reason:reason.trim()}))}>Accept finding</Button></details>;
 }
 export function EvidenceRelationship({snapshot:s,client,disabled,canAttach,command}:{snapshot:IncidentSnapshot;client:IncidentClient;disabled:boolean;canAttach:boolean;command:RunCommand}) {
@@ -53,9 +54,9 @@ export function EvidenceRelationship({snapshot:s,client,disabled,canAttach,comma
   return <details className="panel decision-body"><summary>Link evidence and response context</summary><p className="small">Cited relationships are stored as hypotheses. This control cannot create verified communication or service-dependency routes.</p><form onSubmit={async e=>{e.preventDefault();if(await command(()=>client.linkGraphEdge({...meta(s.incident.id),fromId:from,toId:to,type,confidence,sourceEvidenceIds:evidence}))) {setFrom("");setTo("");setEvidence([]);} }}>
     <fieldset disabled={disabled || !canAttach}>
       <label className="field-label">Source<select required value={from} onChange={e=>setFrom(e.target.value)}><option value="">Select source</option>{nodes.map(n=><option value={n.id} key={n.id}>{n.name}</option>)}</select></label>
-      <label className="field-label">Relationship<select value={type} onChange={e=>setType(e.target.value as GraphEdgeType)}>{["OBSERVED_ON","INDICATES","AFFECTS","SUPPORTED_BY","TARGETS","MITIGATES"].map(t=><option key={t}>{t}</option>)}</select></label>
+      <label className="field-label">Relationship<select value={type} onChange={e=>setType(e.target.value as GraphEdgeType)}>{["OBSERVED_ON","INDICATES","AFFECTS","SUPPORTED_BY","TARGETS","MITIGATES"].map(t=><option key={t} value={t}>{displayLabel(t)}</option>)}</select></label>
       <label className="field-label">Target<select required value={to} onChange={e=>setTo(e.target.value)}><option value="">Select target</option>{nodes.filter(n=>n.id!==from).map(n=><option value={n.id} key={n.id}>{n.name}</option>)}</select></label>
-      <label className="field-label">Confidence<select value={confidence} onChange={e=>setConfidence(e.target.value as Confidence)}>{["LOW","MEDIUM","HIGH"].map(c=><option key={c}>{c}</option>)}</select></label>
+      <label className="field-label">Confidence<select value={confidence} onChange={e=>setConfidence(e.target.value as Confidence)}>{["LOW","MEDIUM","HIGH"].map(c=><option key={c} value={c}>{displayLabel(c)}</option>)}</select></label>
     </fieldset><EvidenceSelection snapshot={s} selected={evidence} onChange={setEvidence} disabled={disabled || !canAttach}/><Button disabled={disabled || !canAttach || !from || !to || from===to || !evidence.length}>Create cited hypothesis link</Button>
   </form></details>;
 }

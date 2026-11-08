@@ -45,7 +45,7 @@ export function ScenarioHistory({snapshot:s,client,disabled,canRead,canRestore,c
     }}><option value="">Select a historical version</option>{history.map(h=><option key={h.id} value={h.id}>v{h.scenarioVersion} · {h.operation} · {h.createdAt}</option>)}</select></label>}
     {loading && <p role="status">Reading authorized snapshot…</p>}{error && <p role="alert" className="impact-warning">{error}</p>}
     <AuthenticationRecovery error={authenticationError} />
-    {target && <p className="small">Snapshot {target.id} · state SHA-256 {target.stateDigest}</p>}
+    {target && <details className="small"><summary>Snapshot integrity</summary><p>Snapshot {target.id} · state SHA-256 {target.stateDigest}</p></details>}
     {target && replay && <ExecutionReplay key={target.id} snapshot={s} target={target} client={client} disabled={disabled} canRead={canRead} />}
     {replay && <><ScenarioComparison replay={replay} snapshot={s} /><p className="small">{replay.edges.filter(e=>e.enabled).length} enabled saved communication/dependency links. The saved version represents historical synthetic state.</p>
       <label className="field-label">Restoration reason<textarea maxLength={2000} disabled={disabled || !allowed} value={reason} onChange={e=>setReason(e.target.value)}/></label>

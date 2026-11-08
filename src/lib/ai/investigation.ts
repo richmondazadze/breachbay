@@ -9,7 +9,7 @@ import { validateActionStatus, type ActionStatusRead } from './action-status';
 import { validatePlanning, type ResponsePlan } from './planning';
 import { AuthError } from '../backend/clerk-token';
 import { randomUUID } from 'node:crypto';
-import { calculateImpact, simulateResponse } from '../simulation/engine';
+import { calculateImpact, simulateResponse, validateScenario } from '../simulation/engine';
 import type { Scenario, SimAction } from '../simulation/types';
 import { validateFindings, sanitizeFreeText, toolArgumentsDigest, type SanitizedEvidence, type Finding } from './evidence';
 import { AIError, callNemotron, providerConfig, type ModelMessage, type ToolDefinition } from './nemotron';
@@ -34,9 +34,29 @@ const registry = [
   definition('calculate_impact', 'Calculate deterministic spread and service impact'),
   definition('simulate_response', 'Preview a synthetic response without execution', { type: { type: 'string', enum: ['ISOLATE_SIMULATED_HOST','BLOCK_SIMULATED_ROUTE','RESET_SIMULATED_CREDENTIAL'] }, targetIds: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 10 } }, ['type','targetIds']),
 ];
-/** Advertise the authorized incident as a constant assertion, never a scope selector. */
-export function investigationToolDefinitions(incidentId: string, ports: Pick<InvestigationPorts, 'getActionStatus'>): ToolDefinition[] {
-  return [...registry, ...(ports.getActionStatus ? [statusTool] : [])].map(tool => {
+/** Advertise only existing targets in the authorized scenario; runtime validation remains authoritative. */
+export function investigationToolDefinitions(incidentId: string, ports: Pick<InvestigationPorts, 'getActionStatus'>, scenario: Scenario): ToolDefinition[] {
+  if (scenario.incidentId !== incidentId) throw new AIError('FORBIDDEN', 'Tool scenario scope does not match authorized incident');
+  validateScenario(scenario);
+  const assetIds = scenario.assets.map(a => a.id).sort();
+  const routeIds = scenario.edges.filter(e => e.type === 'COMMUNICATES_WITH').map(e => e.id).sort();
+  const actions = [
+    { type: 'ISOLATE_SIMULATED_HOST', targetIds: assetIds },
+    { type: 'BLOCK_SIMULATED_ROUTE', targetIds: routeIds },
+    { type: 'RESET_SIMULATED_CREDENTIAL', targetIds: assetIds },
+  ].filter(action => action.targetIds.length);
+  const preview = definition('simulate_response', 'Preview only. ISOLATE_SIMULATED_HOST and RESET_SIMULATED_CREDENTIAL use existing asset IDs. BLOCK_SIMULATED_ROUTE uses existing COMMUNICATES_WITH edge IDs, never asset IDs or DEPENDS_ON edges. Use unique targets; each preview starts from the current scenario.', {
+    type: { type: 'string', enum: actions.map(action => action.type) },
+    targetIds: { type: 'array', items: { type: 'string', enum: [...new Set([...assetIds, ...routeIds])].sort() }, minItems: 1, maxItems: 10 },
+  }, ['type', 'targetIds']);
+  preview.function.parameters.anyOf = actions.map(action => ({
+    type: 'object', properties: {
+      type: { type: 'string', enum: [action.type] },
+      targetIds: { type: 'array', minItems: 1, maxItems: Math.min(10, action.targetIds.length), items: { type: 'string', enum: action.targetIds } },
+    }, required: ['type', 'targetIds'],
+  }));
+  const tools = registry.filter(tool => tool.function.name !== 'simulate_response');
+  return [...tools, ...(actions.length ? [preview] : []), ...(ports.getActionStatus ? [statusTool] : [])].map(tool => {
     const parameters = tool.function.parameters;
     const properties = parameters.properties as Record<string, unknown>;
     return { ...tool, function: { ...tool.function, parameters: { ...parameters, properties: { ...properties, incidentId: { ...(properties.incidentId as object), const: incidentId } } } } };
@@ -118,7 +138,7 @@ export async function investigate(incidentId: string, objective: string, ports: 
       if (lastMessage.role === 'user') lastMessage.content = `${lastMessage.content ?? ''}\n${guidance}`;
       else messages.push({ role: 'user', content: guidance });
       const finalSchema = mode === 'final_json' ? finalResponseSchema(ctx.scenario, ctx.evidence, seenEvidence) : undefined;
-      const { reply, latencyMs } = await callNemotron(messages, mode === 'final_json' ? [] : investigationToolDefinitions(ctx.incidentId, ports), signal, mode, finalSchema, { step, record: (type, data, model) => emit(type, { ...data }, model) });
+      const { reply, latencyMs } = await callNemotron(messages, mode === 'final_json' ? [] : investigationToolDefinitions(ctx.incidentId, ports, ctx.scenario), signal, mode, finalSchema, { step, record: (type, data, model) => emit(type, { ...data }, model) });
       messages.push({ role: 'assistant', content: reply.content, ...(reply.tool_calls?.length ? { tool_calls: reply.tool_calls } : {}) });
       if (reply.tool_calls?.length) {
         failureStage = 'TOOLS';

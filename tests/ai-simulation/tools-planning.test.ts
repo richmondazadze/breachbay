@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { credentialCompromiseScenario } from '../../src/lib/simulation/scenario';
-import { executeInvestigationTool, type InvestigationPorts } from '../../src/lib/ai/investigation';
+import { executeInvestigationTool, investigationToolDefinitions, type InvestigationPorts } from '../../src/lib/ai/investigation';
+import { simulateResponse } from '../../src/lib/simulation/engine';
 import { validatePlanning } from '../../src/lib/ai/planning';
 import { sanitizeEvidence, validateFindings } from '../../src/lib/ai/evidence';
 const scenario = credentialCompromiseScenario('a');
@@ -43,7 +44,7 @@ test('production argument digest identifies legitimate incident scope assertion;
 
 test('advertised scope assertion const preserves required tool arguments and unknown-key rejection', async () => {
   const { investigationToolDefinitions } = await import('../../src/lib/ai/investigation');
-  const definitions = investigationToolDefinitions('a', basePorts);
+  const definitions = investigationToolDefinitions('a', basePorts, scenario);
   for (const d of definitions) {
     const properties = d.function.parameters.properties as Record<string, { const?: string }>;
     assert.equal(properties.incidentId.const, 'a');
@@ -55,6 +56,64 @@ test('advertised scope assertion const preserves required tool arguments and unk
   assert.deepEqual(context.function.parameters.required, []);
   await assert.rejects(executeInvestigationTool('search_evidence', { incidentId: 'a' }, ctx, basePorts));
   await assert.rejects(executeInvestigationTool('simulate_response', { incidentId: 'foreign', type: 'ISOLATE_SIMULATED_HOST', targetIds: ['workstation'] }, ctx, basePorts));
+});
+
+// Next's installed schema-utils bundles a real JSON Schema validator; no dependency or provider call.
+const { validate: validateToolSchema } = require('next/dist/compiled/schema-utils3') as { validate(schema: Record<string, unknown>, value: unknown): void };
+const previewSchema = (current = scenario) => investigationToolDefinitions(current.incidentId, basePorts, current).find(d => d.function.name === 'simulate_response')!.function.parameters;
+
+test('preview schema accepts existing action-specific targets and independent v2 previews without mutation', async () => {
+  const current = simulateResponse(scenario, { type: 'ISOLATE_SIMULATED_HOST', targetIds: ['app-host'] }, 1).nextState;
+  const context = { ...ctx, scenario: current }, schema = previewSchema(current), before = JSON.stringify(current);
+  for (const type of ['ISOLATE_SIMULATED_HOST', 'RESET_SIMULATED_CREDENTIAL', 'BLOCK_SIMULATED_ROUTE'] as const) {
+    const targets = type === 'BLOCK_SIMULATED_ROUTE' ? current.edges.filter(e => e.type === 'COMMUNICATES_WITH') : current.assets;
+    for (const target of targets) {
+      const args = { incidentId: 'a', type, targetIds: [target.id] };
+      validateToolSchema(schema, args);
+      const result = await executeInvestigationTool('simulate_response', args, context, basePorts) as Record<string, unknown>;
+      assert.equal(result.parentVersion, 2);
+      assert(!('nextState' in result));
+      assert.deepEqual(result.action, args);
+      assert.equal(JSON.stringify(current), before);
+    }
+  }
+  const other = credentialCompromiseScenario('b');
+  other.assets.push({ ...other.assets[0], id: 'b-only-host', name: 'Other synthetic host' });
+  const ownSchema = JSON.stringify(schema), otherSchema = previewSchema(other);
+  validateToolSchema(otherSchema, { type: 'ISOLATE_SIMULATED_HOST', targetIds: ['b-only-host'] });
+  assert.throws(() => validateToolSchema(schema, { type: 'ISOLATE_SIMULATED_HOST', targetIds: ['b-only-host'] }));
+  assert.equal(JSON.stringify(schema), ownSchema);
+  assert.throws(() => investigationToolDefinitions('a', basePorts, other));
+});
+
+test('preview schema and unchanged runtime reject foreign, wrong-category and malformed targets', async () => {
+  const schema = previewSchema(), before = JSON.stringify(scenario);
+  const invalid: Record<string, unknown>[] = [
+    { type: 'BLOCK_SIMULATED_ROUTE', targetIds: ['workstation'] },
+    { type: 'ISOLATE_SIMULATED_HOST', targetIds: ['ws-jump'] },
+    { type: 'RESET_SIMULATED_CREDENTIAL', targetIds: ['ws-jump'] },
+    ...['ISOLATE_SIMULATED_HOST', 'RESET_SIMULATED_CREDENTIAL', 'BLOCK_SIMULATED_ROUTE'].flatMap(type => [
+      ...scenario.edges.filter(e => e.type === 'DEPENDS_ON').map(e => ({ type, targetIds: [e.id] })),
+      { type, targetIds: ['foreign'] }, { type, targetIds: [] }, { type, targetIds: [1] },
+      { type, targetIds: ['workstation'], incidentId: 'foreign' },
+    ]),
+    { type: 'DELETE_HOST', targetIds: ['workstation'] },
+    { type: 'BLOCK_SIMULATED_ROUTE', targetIds: ['ws-jump', 'workstation'] },
+    { type: 'ISOLATE_SIMULATED_HOST', targetIds: Array(11).fill('workstation') },
+    { type: 'ISOLATE_SIMULATED_HOST' }, { targetIds: ['workstation'] },
+    { type: 'ISOLATE_SIMULATED_HOST', targetIds: ['workstation'], expectedVersion: 2 },
+  ];
+  for (const args of invalid) {
+    assert.throws(() => validateToolSchema(schema, args));
+    await assert.rejects(executeInvestigationTool('simulate_response', args, ctx, basePorts));
+    assert.equal(JSON.stringify(scenario), before);
+  }
+  // Transport need not enforce uniqueness: the engine still rejects duplicate action targets.
+  await assert.rejects(executeInvestigationTool('simulate_response', { type: 'ISOLATE_SIMULATED_HOST', targetIds: ['workstation', 'workstation'] }, ctx, basePorts));
+  const noRoutes = { ...scenario, edges: scenario.edges.filter(e => e.type === 'DEPENDS_ON') };
+  assert.throws(() => validateToolSchema(previewSchema(noRoutes), { type: 'BLOCK_SIMULATED_ROUTE', targetIds: ['portal-app'] }));
+  const empty = { ...scenario, assets: [], edges: [], compromisedAssetIds: [], protectedAssetIds: [] };
+  assert(!investigationToolDefinitions('a', basePorts, empty).some(d => d.function.name === 'simulate_response'));
 });
 
 test('empty evidence query retrieves up to 20 approved excerpts without graph citation elevation', async () => {

@@ -1,13 +1,14 @@
 import * as THREE from "three";
+import { cubicBezier } from "motion";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import type { ResponseModelLink, ResponseModelNode, ResponseScene } from "./types";
+import type { ResponseCameraView, ResponseModelLink, ResponseModelNode, ResponseScene } from "./types";
 
 const BLUE = 0x2f6bff;
 const INK = 0x1e1e1c;
 type Payload = { nodes: ResponseModelNode[]; links: ResponseModelLink[] };
 
 /** Procedural materials and geometry only. No remote model, texture, or telemetry request. */
-export function createResponseScene(host: HTMLDivElement, labels: HTMLDivElement, payload: Payload, variant: "showcase" | "operational", onSelect: (id: string) => void, instant: boolean, onUnavailable: () => void): ResponseScene {
+export function createResponseScene(host: HTMLDivElement, labels: HTMLDivElement, payload: Payload, variant: "showcase" | "operational", onSelect: (id: string) => void, instant: boolean, onUnavailable: () => void, onView: (view: ResponseCameraView) => void = () => {}): ResponseScene {
   const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: "low-power" });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
   renderer.setClearColor(0xffffff, 0);
@@ -45,6 +46,7 @@ export function createResponseScene(host: HTMLDivElement, labels: HTMLDivElement
   const chrome = material(new THREE.MeshPhysicalMaterial({ color: 0xa7b5ca, metalness: .9, roughness: .17, clearcoat: 1, envMapIntensity: 1.1 }));
   const glass = material(new THREE.MeshPhysicalMaterial({ color: 0xb5ceff, metalness: .02, roughness: .06, transmission: .46, thickness: .6, ior: 1.46, transparent: true, opacity: .9, clearcoat: 1, envMapIntensity: 1.4 }));
   const blue = material(new THREE.MeshPhysicalMaterial({ color: BLUE, metalness: .26, roughness: .16, clearcoat: 1, emissive: 0x163780, emissiveIntensity: .08 }));
+  const selectedSurface = material(new THREE.MeshStandardMaterial({ color: 0xd7ff3f, roughness: .4 }));
   const muted = material(new THREE.MeshPhysicalMaterial({ color: 0xb6c2d6, metalness: .1, roughness: .3, clearcoat: 1 }));
   const dark = material(new THREE.MeshStandardMaterial({ color: INK, metalness: .4, roughness: .36 }));
 
@@ -158,12 +160,29 @@ export function createResponseScene(host: HTMLDivElement, labels: HTMLDivElement
   const pointer = new THREE.Vector2();
   const home = .13;
   let targetYaw = home, yaw = home;
+  let targetZoom = 1, zoom = 1;
+  const center = new THREE.Vector3(), targetCenter = new THREE.Vector3();
+  const startCenter = new THREE.Vector3();
+  let startYaw = home, startZoom = 1, transitionStart = 0, transitioning = false;
+  let gestures = false, manualCamera = false;
+  const easeCamera = cubicBezier(.77, 0, .175, 1);
+  const view = (): ResponseCameraView => ({zoom: targetZoom, yaw: targetYaw, center: targetCenter.toArray() as [number, number, number]});
+  const constrainCenter = () => { targetCenter.x = THREE.MathUtils.clamp(targetCenter.x, -6, 6); targetCenter.y = THREE.MathUtils.clamp(targetCenter.y, -4, 4); targetCenter.z = THREE.MathUtils.clamp(targetCenter.z, -6, 6); };
+  const changeView = (immediately = false) => {
+    manualCamera = true;
+    constrainCenter();
+    startYaw = yaw; startZoom = zoom; startCenter.copy(center);
+    transitionStart = performance.now(); transitioning = !(calm || immediately);
+    if (!transitioning) { yaw = targetYaw; zoom = targetZoom; center.copy(targetCenter); }
+    onView(view()); draw(); queue();
+  };
   let pointerTilt = 0, tilt = 0;
   let width = 1, height = 1;
   let inView = false, flow = false, disposed = false, calm = instant;
   let raf = 0, last = 0, elapsed = 0;
   let intro = instant ? 1 : 0;
-  let dragging = false, downX = 0, downY = 0, downYaw = home;
+  let dragging = false, downX = 0, downY = 0;
+  const pointers = new Map<number, {x: number; y: number}>();
   let dragged = false;
   // Match the CSS viewport breakpoint, not the width of a desktop dashboard column.
   const compactLabels = window.matchMedia("(max-width: 640px)");
@@ -175,13 +194,14 @@ export function createResponseScene(host: HTMLDivElement, labels: HTMLDivElement
     camera.right = vertical * aspect / 2;
     camera.top = vertical / 2;
     camera.bottom = -vertical / 2;
-    camera.position.set(6.8, 8.5, 11);
-    camera.lookAt(0, -.1, 0);
+    camera.zoom = zoom;
+    camera.position.set(6.8, 8.5, 11).add(center);
+    camera.lookAt(center.x, center.y - .1, center.z);
     camera.updateProjectionMatrix();
   };
   const projectLabels = () => {
     if (compactLabels.matches) {
-      modules.forEach(({ label }) => { if (label) { label.style.transform = ""; label.style.left = ""; label.style.top = ""; } });
+      modules.forEach(({ label }) => { if (label) { label.hidden = false; label.style.transform = ""; label.style.left = ""; label.style.top = ""; } });
       return;
     }
     const placed: { x: number; y: number; w: number; h: number }[] = [];
@@ -190,6 +210,8 @@ export function createResponseScene(host: HTMLDivElement, labels: HTMLDivElement
       labelPoint.set(0, .79, .55);
       object.localToWorld(labelPoint);
       labelPoint.project(camera);
+      label.hidden = Math.abs(labelPoint.x) > 1 || Math.abs(labelPoint.y) > 1;
+      if (label.hidden) return;
       const w = label.offsetWidth, h = label.offsetHeight;
       const x = THREE.MathUtils.clamp((labelPoint.x + 1) * width / 2, w / 2 + 8, width - w / 2 - 8);
       let y = (1 - labelPoint.y) * height / 2;
@@ -208,6 +230,7 @@ export function createResponseScene(host: HTMLDivElement, labels: HTMLDivElement
     rig.rotation.y = yaw;
     rig.rotation.x = tilt;
     rig.updateMatrixWorld(true);
+    updateCamera();
     renderer.render(scene, camera);
     projectLabels();
   };
@@ -218,7 +241,14 @@ export function createResponseScene(host: HTMLDivElement, labels: HTMLDivElement
     const delta = Math.min(.04, last ? (time - last) / 1000 : .016);
     last = time;
     elapsed += delta;
-    yaw += (targetYaw - yaw) * Math.min(1, delta * 9);
+    if (transitioning) {
+      const progress = Math.min(1, (time - transitionStart) / 220);
+      const amount = easeCamera(progress);
+      yaw = THREE.MathUtils.lerp(startYaw, targetYaw, amount);
+      zoom = THREE.MathUtils.lerp(startZoom, targetZoom, amount);
+      center.lerpVectors(startCenter, targetCenter, amount);
+      transitioning = progress < 1;
+    }
     tilt += (pointerTilt - tilt) * Math.min(1, delta * 8);
     if (intro < 1) {
       intro = Math.min(1, intro + delta / .85);
@@ -234,11 +264,11 @@ export function createResponseScene(host: HTMLDivElement, labels: HTMLDivElement
       if (flow) packet.mesh.position.copy(packet.curve.getPoint((elapsed * packet.speed + packet.offset) % 1));
     });
     draw();
-    if (flow || intro < 1 || Math.abs(targetYaw - yaw) > .0001 || Math.abs(pointerTilt - tilt) > .0001) queue();
+    if (flow || intro < 1 || transitioning || Math.abs(pointerTilt - tilt) > .0001) queue();
   };
   const resize = () => {
     width = Math.max(1, host.clientWidth);
-    height = Math.max(1, host.clientHeight - (compactLabels.matches ? 100 : 0));
+    height = Math.max(1, host.clientHeight - (compactLabels.matches ? labels.offsetHeight + 24 : 0));
     renderer.setSize(width, height, false);
     renderer.domElement.style.width = `${width}px`;
     renderer.domElement.style.height = `${height}px`;
@@ -250,37 +280,64 @@ export function createResponseScene(host: HTMLDivElement, labels: HTMLDivElement
   observer.observe(host);
   resize();
 
+  const panPixels = (dx: number, dy: number) => {
+    const scale = (camera.top - camera.bottom) / zoom / height;
+    targetCenter.add(new THREE.Vector3(-dx * scale, dy * scale, 0).applyQuaternion(camera.quaternion));
+  };
+  const pair = () => {
+    const [a,b] = [...pointers.values()];
+    return a && b ? {x:(a.x+b.x)/2,y:(a.y+b.y)/2,distance:Math.hypot(a.x-b.x,a.y-b.y)} : null;
+  };
   const down = (event: PointerEvent) => {
-    if (event.pointerType === "touch") return;
-    dragging = true; dragged = false;
-    downX = event.clientX; downY = event.clientY; downYaw = targetYaw;
+    if (event.pointerType === "touch" && !gestures || event.button !== 0) return;
+    pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});
+    dragging = true;
+    if (pointers.size === 1) { dragged = false; downX = event.clientX; downY = event.clientY; }
+    else dragged = true;
     renderer.domElement.setPointerCapture(event.pointerId);
   };
   const move = (event: PointerEvent) => {
-    if (dragging) {
-      dragged = dragged || Math.abs(event.clientX - downX) + Math.abs(event.clientY - downY) > 5;
-      targetYaw = THREE.MathUtils.clamp(downYaw + (event.clientX - downX) * .003, -.55, .65);
-      queue();
-    } else if (variant === "showcase" && !calm && window.matchMedia("(hover: hover) and (pointer: fine)").matches) {
+    const previous = pointers.get(event.pointerId);
+    if (dragging && previous) {
+      const oldPair = pair();
+      pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});
+      const nextPair = pair();
+      dragged ||= Math.abs(event.clientX-downX)+Math.abs(event.clientY-downY)>5;
+      if (oldPair && nextPair) {
+        if (oldPair.distance > 0) targetZoom = THREE.MathUtils.clamp(targetZoom * nextPair.distance / oldPair.distance, .75, 3);
+        panPixels(nextPair.x-oldPair.x,nextPair.y-oldPair.y);
+      } else if (event.shiftKey || event.pointerType === "touch") panPixels(event.clientX-previous.x,event.clientY-previous.y);
+      else targetYaw = THREE.MathUtils.clamp(targetYaw+(event.clientX-previous.x)*.003,-.55,.65);
+      changeView(true);
+    } else if (variant === "showcase" && !manualCamera && !calm && window.matchMedia("(hover: hover) and (pointer: fine)").matches) {
       const bounds = renderer.domElement.getBoundingClientRect();
-      pointerTilt = THREE.MathUtils.clamp((event.clientY - bounds.top) / bounds.height - .5, -.5, .5) * .08;
-      targetYaw = home + ((event.clientX - bounds.left) / bounds.width - .5) * .2;
+      pointerTilt = THREE.MathUtils.clamp((event.clientY-bounds.top)/bounds.height-.5,-.5,.5)*.08;
+      targetYaw = home+((event.clientX-bounds.left)/bounds.width-.5)*.2;
+      startYaw=yaw; startZoom=zoom; startCenter.copy(center); transitionStart=performance.now(); transitioning=true;
       queue();
     }
   };
   const up = (event: PointerEvent) => {
-    const wasDragging = dragging;
-    dragging = false;
+    const tracked = pointers.delete(event.pointerId);
+    dragging = pointers.size > 0;
     if (renderer.domElement.hasPointerCapture(event.pointerId)) renderer.domElement.releasePointerCapture(event.pointerId);
-    if (!wasDragging || dragged) return;
-    const bounds = renderer.domElement.getBoundingClientRect();
-    pointer.set((event.clientX - bounds.left) / bounds.width * 2 - 1, -(event.clientY - bounds.top) / bounds.height * 2 + 1);
-    raycaster.setFromCamera(pointer, camera);
-    const hit = raycaster.intersectObjects(clickable, false)[0];
+    if (!tracked || dragging || dragged || event.type === "pointercancel") return;
+    const bounds=renderer.domElement.getBoundingClientRect();
+    pointer.set((event.clientX-bounds.left)/bounds.width*2-1,-(event.clientY-bounds.top)/bounds.height*2+1);
+    raycaster.setFromCamera(pointer,camera);
+    const hit=raycaster.intersectObjects(clickable,false)[0];
     if (hit?.object.userData.nodeId) onSelect(hit.object.userData.nodeId as string);
   };
-  const leave = () => { if (!dragging && variant === "showcase") { targetYaw = home; pointerTilt = 0; queue(); } };
+  const wheel = (event: WheelEvent) => {
+    // Ordinary wheel scroll remains page navigation. Trackpad pinch sends ctrlKey.
+    if (!event.ctrlKey && !event.metaKey) return;
+    event.preventDefault();
+    targetZoom=THREE.MathUtils.clamp(targetZoom*Math.exp(-event.deltaY*.004),.75,3);
+    changeView();
+  };
+  const leave = () => { if (!dragging && !manualCamera && variant === "showcase") { targetYaw=home; pointerTilt=0; changeView(); manualCamera=false; } };
   const lost = (event: Event) => { event.preventDefault(); flow = false; if (raf) cancelAnimationFrame(raf); raf = 0; onUnavailable(); };
+  renderer.domElement.addEventListener("wheel", wheel, {passive:false});
   renderer.domElement.addEventListener("pointerdown", down);
   renderer.domElement.addEventListener("pointermove", move);
   renderer.domElement.addEventListener("pointerup", up);
@@ -290,15 +347,22 @@ export function createResponseScene(host: HTMLDivElement, labels: HTMLDivElement
 
   return {
     setMotion(enabled) { flow = enabled; particles.forEach(packet => { packet.mesh.visible = enabled; }); if (enabled) queue(); else draw(); },
-    setInstant(enabled) { calm = enabled; if (enabled) { intro = 1; yaw = targetYaw; tilt = pointerTilt = 0; modules.forEach(({ object }) => { object.position.y = 0; }); } draw(); queue(); },
+    setInstant(enabled) { calm = enabled; if (enabled) { intro = 1; yaw = targetYaw; zoom = targetZoom; center.copy(targetCenter); transitioning = false; tilt = pointerTilt = 0; modules.forEach(({ object }) => { object.position.y = 0; }); } draw(); queue(); },
     setVisible(value) { inView = value; last = 0; if (value) queue(); else if (raf) { cancelAnimationFrame(raf); raf = 0; } },
-    select(id) { modules.forEach(node => { node.lid.material = node.id === id ? blue : node.surface; }); draw(); },
-    rotate(direction, immediately) { targetYaw = THREE.MathUtils.clamp(targetYaw + direction * .16, -.55, .65); if (calm || immediately) yaw = targetYaw; draw(); queue(); },
-    reset(immediately) { targetYaw = home; pointerTilt = 0; if (calm || immediately) { yaw = home; tilt = 0; } draw(); queue(); },
+    select(id) { modules.forEach(node => { node.lid.material = node.id === id ? selectedSurface : node.surface; }); draw(); },
+    rotate(direction, immediately) { targetYaw=THREE.MathUtils.clamp(targetYaw+direction*.16,-.55,.65); changeView(immediately); },
+    zoomBy(factor, immediately) { if (!Number.isFinite(factor) || factor<=0) return; targetZoom=THREE.MathUtils.clamp(targetZoom*factor,.75,3); changeView(immediately); },
+    pan(x,y,immediately) { if (!Number.isFinite(x) || !Number.isFinite(y)) return; targetCenter.add(new THREE.Vector3(x*.6/targetZoom,y*.6/targetZoom,0).applyQuaternion(camera.quaternion)); changeView(immediately); },
+    focus(id, immediately) { const node=modules.find(node=>node.id===id); if(!node) return; rig.updateMatrixWorld(true); node.object.getWorldPosition(targetCenter); targetZoom=1.7; pointerTilt=0; changeView(immediately); },
+    setGestures(enabled) { gestures=enabled; renderer.domElement.dataset.touchControls=String(enabled); if(!enabled) { pointers.clear(); dragging=false; } },
+    getView() { return {zoom,yaw,center:center.toArray() as [number,number,number]}; },
+    restoreView(saved) { if(!Number.isFinite(saved.zoom) || !Number.isFinite(saved.yaw) || saved.center.length!==3 || !saved.center.every(Number.isFinite)) return; targetZoom=THREE.MathUtils.clamp(saved.zoom,.75,3); targetYaw=THREE.MathUtils.clamp(saved.yaw,-.55,.65); targetCenter.fromArray(saved.center); changeView(true); },
+    reset(immediately) { targetYaw=home; targetZoom=1; targetCenter.set(0,0,0); pointerTilt=0; changeView(immediately); manualCamera=false; },
     dispose() {
       disposed = true;
       observer.disconnect();
       if (raf) cancelAnimationFrame(raf);
+      renderer.domElement.removeEventListener("wheel", wheel);
       renderer.domElement.removeEventListener("pointerdown", down);
       renderer.domElement.removeEventListener("pointermove", move);
       renderer.domElement.removeEventListener("pointerup", up);
@@ -311,7 +375,7 @@ export function createResponseScene(host: HTMLDivElement, labels: HTMLDivElement
       renderer.dispose();
       renderer.forceContextLoss();
       renderer.domElement.remove();
-      modules.forEach(({ label }) => { if (label) { label.style.transform = ""; label.style.left = ""; label.style.top = ""; } });
+      modules.forEach(({ label }) => { if (label) { label.hidden = false; label.style.transform = ""; label.style.left = ""; label.style.top = ""; } });
     },
   };
 }

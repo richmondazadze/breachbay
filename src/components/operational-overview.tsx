@@ -16,6 +16,7 @@ import { EvidenceCitations } from "./decision-details";
 import { useInterfaceMotion } from "@/hooks/use-interface-motion";
 import { Search, Network, ArrowUpRight, FileText } from "./ui/icons";
 import { ResponseModel, type ResponseModelLink } from "./response-model/response-model";
+import { RecordedResponseTwin, type RecordedResponseTwinProps } from "./response-model/recorded-response-twin";
 interface Props {
   nodes: Node[];
   edges: Edge[];
@@ -34,6 +35,7 @@ interface Props {
   modelRunning?: boolean;
   orchestration?: React.ReactNode;
   communications?: React.ReactNode;
+  recordedComparison?: RecordedResponseTwinProps;
 }
 export function OperationalOverview(p: Props) {
   const [query, setQuery] = useState("");
@@ -217,7 +219,7 @@ export function OperationalOverview(p: Props) {
             </span>
           </div>
           <motion.div key={viewMode} initial={instant ? false : {opacity:0}} animate={{opacity:1}} transition={{duration,ease:[0.23,1,0.32,1]}}>{viewMode === "model" ? (
-            <ResponseModel variant="operational" title="Scoped response model" nodes={shown.map(a=>({id:a.id,label:a.name,kind:a.kind,state:a.state}))} links={(p.modelLinks ?? p.edges.map(e=>({id:e.id,from:e.source,to:e.target,enabled:true,verified:!e.style?.strokeDasharray,label:typeof e.label==="string" ? e.label : undefined}))).filter(e=>ids.has(e.from)&&ids.has(e.to))} onSelect={p.onInspect} instant={instant} running={p.modelRunning ?? false} />
+            <><ResponseModel variant="operational" title="Scoped response model" nodes={shown.map(a=>({id:a.id,label:a.name,kind:a.kind,state:a.state}))} links={(p.modelLinks ?? p.edges.map(e=>({id:e.id,from:e.source,to:e.target,enabled:true,verified:!e.style?.strokeDasharray,label:typeof e.label==="string" ? e.label : undefined}))).filter(e=>ids.has(e.from)&&ids.has(e.to))} onSelect={p.onInspect} instant={instant} running={p.modelRunning ?? false} />{p.recordedComparison && <RecordedResponseTwin {...p.recordedComparison} instant={instant}/>}</>
           ) : viewMode === "list" ? (
             <div className="asset-list">
               {shown.map((a) => (

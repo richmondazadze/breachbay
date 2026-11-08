@@ -104,7 +104,7 @@ html[data-theme] .bb-app .bb-model-label[data-selected="true"] span { color: var
 html[data-theme] .bb-app .bb-model-controls button { min-height: 44px; min-width: 44px; font-size: 12px; background: var(--panel); color: var(--text); border-color: var(--line); }
 html[data-theme] .bb-app .bb-model-record { background: transparent; border-color: var(--line); }
 html[data-theme] .bb-app .bb-orchestration-instrument { background: var(--surface-secondary); border-color: var(--line); box-shadow: none; }
-html[data-theme] .bb-app .bb-orchestration-station[data-active="true"] .bb-orchestration-instrument { background: var(--brand-blue); color: white; border-color: var(--brand-blue); }
+html[data-theme] .bb-app .bb-orchestration-station[data-active="true"] .bb-orchestration-instrument { background: var(--action-blue); color: white; border-color: var(--action-blue); }
 html[data-theme] .bb-app .bb-orchestration-beacon { box-shadow: none; }
 html[data-theme] .bb-app .bb-orchestration-rail { background: var(--line); }
 html[data-theme] .bb-app .bb-orchestration-rail i { background: var(--brand-blue); }
@@ -263,3 +263,20 @@ html[data-theme] .bb-app .task-editor .acknowledgment-control { margin: 0; }
   html[data-theme] .bb-app .source-row > span { grid-column: 1; }
   html[data-theme] .bb-app .source-row .citation-row { grid-column: 1; margin: 0; }
 }
+
+/* Feedback follows actual control flags and server receipts, without progress estimates. */
+html[data-theme] .bb-app .button[data-pending="true"] { cursor: progress; opacity: 1; }
+html[data-theme] .bb-app .button[data-pending="true"]::before { content: ""; flex-shrink: 0; width: 12px; height: 12px; border: 1.5px solid currentColor; border-radius: 50%; background: transparent; }
+html[data-theme] .bb-app .button[aria-disabled="true"] { cursor: default; }
+html[data-theme] .bb-app .button:focus-visible { outline: 2px solid var(--action-blue); outline-offset: 3px; }
+html[data-theme] .bb-app .receipt-panel > p[role="status"] { display: flex; align-items: flex-start; gap: 10px; font-weight: 500; margin: 0 0 8px; }
+html[data-theme] .bb-app .receipt-panel > p[role="status"]::before { content: ""; width: 8px; height: 8px; margin-top: 7px; flex-shrink: 0; border: 1px solid var(--muted); border-radius: 50%; }
+html[data-theme] .bb-app .bb-camera-zoom output { color: var(--text); }
+html[data-theme] .bb-app .bb-model-controls button[aria-pressed="true"] { background: var(--acid-lime); color: var(--lime-ink); border-color: var(--lime-ink); }
+html[data-theme] .bb-app .bb-model-controls button:disabled { color: var(--muted); background: var(--surface-secondary); }
+html[data-theme] .bb-app .bb-camera-focus, html[data-theme] .bb-app .bb-model-camera-help { color: var(--muted); }
+html[data-theme] .bb-app .bb-camera-focus select { background: var(--panel); border-color: var(--line); color: var(--text); }
+html[data-theme] .bb-app .bb-model-stage:focus-visible { outline-color: var(--teal); }
+@media (prefers-reduced-motion:reduce) { html[data-theme] .bb-app .button:active { transform: none; } }
+html[data-theme] .bb-app .bb-orchestration-station[data-state="ready"] .bb-orchestration-instrument { background: var(--acid-lime); color: var(--lime-ink); border-color: var(--lime-ink); }
+html[data-theme] .bb-app .bb-orchestration[data-connected="false"] .bb-orchestration-instrument { background: var(--surface-secondary); color: var(--muted); border-color: var(--line); }

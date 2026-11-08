@@ -207,7 +207,8 @@ export function ConnectedIncident({
             }))}
             modelLinks={s.edges.map(e=>({id:e.id,from:e.fromId,to:e.toId,enabled:e.enabled,verified:e.verificationStatus==="VERIFIED",label:displayLabel(e.type)}))}
             modelRunning={state.connection==="live" && latestInvestigation?.status==="RUNNING"}
-            orchestration={latestInvestigation && <InvestigationOrchestration run={latestInvestigation} events={s.streamEvents ?? []} tools={s.toolRuns} evidence={s.evidence} onInspect={setSelected} connected={state.connection==="live"} compact />}
+            recordedComparison={client && s.incident.classification==="SYNTHETIC" ? {snapshot:s,client,connected:state.connection==="live"} : undefined}
+            orchestration={latestInvestigation && <InvestigationOrchestration run={latestInvestigation} events={s.streamEvents ?? []} tools={s.toolRuns} evidence={s.evidence} onInspect={setSelected} connected={state.connection==="live"} onReview={()=>setTab("investigation")} compact />}
             communications={<CollaborationFeed compact messages={s.messages.map(m=>({id:m.id,incidentId:m.incidentId,text:m.text,createdAt:m.createdAt,authorId:m.authorId,authorLabel:responderLabel(m.authorId,s.memberships,state.session?.user.id)}))} confirmed={state.connection==="live"} onOpenChat={()=>setTab("collaboration")}/>}
             evidence={s.evidence}
             investigationStatus={

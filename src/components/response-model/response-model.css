@@ -1,19 +1,19 @@
-.bb-response-model { --model-blue: var(--brand-blue, #2f6bff); --model-ink: #1e1e1c; position: relative; isolation: isolate; min-width: 0; border: 1px solid rgba(190, 199, 215, .64); border-radius: 8px; background: linear-gradient(145deg, rgba(255,255,255,.94), rgba(245,248,254,.74)); box-shadow: inset 0 1px 0 #fff, inset 1px 0 0 #fff, 0 18px 46px -28px rgba(32, 55, 100, .3); overflow: hidden; color: var(--model-ink); }
+.bb-response-model { --model-blue: var(--brand-blue, #2f6bff); --model-ink: #1e1e1c; position: relative; isolation: isolate; min-width: 0; border: 1px solid var(--line, #e5e5e5); border-radius: 8px; background: #fff; box-shadow: none; overflow: hidden; color: var(--model-ink); }
 .bb-model-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px 22px 0; position: relative; z-index: 2; }
 .bb-model-heading h3 { font-size: 17px; line-height: 1.3; letter-spacing: -.035em; margin: 5px 0 0; }
 .bb-model-caption { font-size: 10px; color: #68758a; }
 .bb-model-badge { font-size: 10px; color: #0059eb; border: 1px solid #dce5f5; border-radius: 4px; padding: 5px 7px; background: rgba(255,255,255,.8); white-space: nowrap; }
 .bb-model-stage { position: relative; width: 100%; height: 400px; min-width: 0; overflow: hidden; }
-.bb-model-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; outline: none; touch-action: pan-y; }
-.bb-model-floor { position: absolute; width: 65%; height: 52%; left: 17.5%; top: 25%; border-radius: 50%; background: radial-gradient(ellipse, rgba(63,91,142,.11), transparent 68%); filter: blur(6px); pointer-events: none; }
+.bb-model-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; outline: none; touch-action: pan-y; cursor: grab; }
+.bb-model-floor { position: absolute; width: 65%; height: 52%; left: 17.5%; top: 25%; border-radius: 50%; background: transparent; pointer-events: none; }
 .bb-model-labels { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
-.bb-model-label { position: absolute; left: var(--bb-label-left); top: var(--bb-label-top); width: max-content; max-width: 138px; min-height: 36px; padding: 6px 9px; text-align: center; border: 1px solid rgba(203,211,226,.7); background: rgba(255,255,255,.9); border-radius: 6px; color: var(--model-ink); box-shadow: 0 4px 10px -7px rgba(30,50,90,.4), inset 0 1px 0 white; transform: translate(-50%, -50%); pointer-events: auto; cursor: pointer; font-family: var(--font-interface); transition: border-color 160ms ease, background-color 160ms ease; }
+.bb-model-label { position: absolute; left: var(--bb-label-left); top: var(--bb-label-top); width: max-content; max-width: 138px; min-height: 44px; padding: 6px 9px; text-align: center; border: 1px solid #e5e5e5; background: #fff; border-radius: 6px; color: var(--model-ink); box-shadow: none; transform: translate(-50%, -50%); pointer-events: auto; cursor: pointer; font-family: var(--font-interface); transition: border-color 160ms ease, background-color 160ms ease; }
 .bb-model-label strong { font-family: var(--font-interface); display: block; font-size: 11px; font-weight: 550; line-height: 1.25; letter-spacing: -.025em; }
 .bb-model-label span { display: block; margin-top: 3px; font-size: 9px; color: #667389; line-height: 1.2; }
-.bb-model-label[data-selected=true] { border-color: var(--model-blue); background: #eef3ff; }
+.bb-model-label[data-selected=true] { border-color: var(--model-ink); background: var(--acid-lime, #d7ff3f); }
 .bb-model-label:focus-visible, .bb-model-controls button:focus-visible, .bb-model-record button:focus-visible { outline: 2px solid #0059eb; outline-offset: 3px; }
 .bb-model-static-hardware { position: absolute; inset: 15% 14% 18%; display: grid; grid-template-columns: repeat(3,1fr); align-content: center; gap: 60px 50px; transform: perspective(800px) rotateX(25deg) rotateZ(-8deg); pointer-events: none; }
-.bb-model-static-hardware > span { position: relative; height: 58px; border-radius: 8px; border: 1px solid #c8d5ea; background: linear-gradient(135deg,#fff,#d6e3ff); box-shadow: 0 12px 0 -3px #bbcbe3, 0 22px 14px -12px #9baecc; }
+.bb-model-static-hardware > span { position: relative; height: 58px; border-radius: 8px; border: 1px solid #c8d5ea; background: #fff; box-shadow: none; }
 .bb-model-static-hardware i { display: block; width: 62%; height: 3px; margin: 9px auto; background: #9fb9eb; border-radius: 1px; }
 .bb-response-model[data-ready=true] .bb-model-static-hardware { display: none; }
 .bb-model-corner { position: absolute; bottom: 22px; left: 22px; display: flex; align-items: center; gap: 9px; font-family: var(--font-mono,monospace); font-size: 8px; letter-spacing: .1em; color: #8997ad; pointer-events: none; }
@@ -21,7 +21,7 @@
 .bb-model-controls { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; padding: 0 22px 14px; position: relative; z-index: 3; }
 .bb-model-explainer { font-size: 10px; color: #617088; }
 .bb-model-controls > div { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
-.bb-model-controls button { font-family: var(--font-interface); cursor: pointer; border: 1px solid #dce3ef; background: rgba(255,255,255,.86); border-radius: 6px; color: #394963; padding: 7px 9px; min-height: 32px; min-width: 32px; font-size: 10px; transition: background-color 160ms ease, transform 140ms var(--ease-out); }
+.bb-model-controls button { font-family: var(--font-interface); cursor: pointer; border: 1px solid #dce3ef; background: rgba(255,255,255,.86); border-radius: 6px; color: #394963; padding: 7px 9px; min-height: 44px; min-width: 44px; font-size: 10px; transition: background-color 160ms ease, transform 140ms var(--ease-out); }
 .bb-model-controls button:active { transform: scale(.97); }
 .bb-model-footnote { font-size: 10px !important; line-height: 1.5 !important; color: #69768c !important; margin: 0 !important; padding: 0 22px 16px; max-width: 70ch; }
 .bb-model-record { border-top: 1px solid #e0e6ef; padding: 12px 22px; font-size: 11px; background: rgba(255,255,255,.54); }
@@ -34,3 +34,48 @@
 @media (hover:hover) and (pointer:fine) { .bb-model-label:hover { border-color: #91ade6; background: white; } .bb-model-controls button:hover { background: #eff4ff; } }
 @media (max-width:640px) { .bb-model-heading { padding: 17px 16px 0; } .bb-model-stage, .bb-model-operational .bb-model-stage { height: 320px; } .bb-model-labels { inset: auto 12px 12px; display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px; } .bb-model-label { position: static; width: 100%; max-width: none; padding: 5px 7px; left: auto !important; top: auto !important; transform: none !important; min-height: 44px; } .bb-model-label strong { font-size: 10px; } .bb-model-label span { font-size: 8px; } .bb-model-controls { padding: 0 16px 12px; gap: 9px; } .bb-model-controls button { min-height: 44px; min-width: 44px; } .bb-model-footnote { padding: 0 16px 15px; } .bb-model-record { padding: 12px 16px; } .bb-model-heading h3 { font-size: 15px; } }
 @media (prefers-reduced-motion:reduce) { .bb-model-controls button { transition: background-color 160ms ease; } .bb-model-controls button:active { transform: none; } }
+
+/* Camera gestures have equivalent labeled controls and never capture ordinary page scrolling. */
+.bb-model-stage:focus-visible { outline: 2px solid #0059eb; outline-offset: -3px; }
+.bb-model-stage canvas:active { cursor: grabbing; }
+.bb-model-stage canvas[data-touch-controls="true"] { touch-action: none; }
+.bb-response-model .bb-model-label[data-selected="true"] { color: #1e1e1c; background: var(--acid-lime, #d7ff3f); border-color: #1e1e1c; }
+.bb-response-model .bb-model-label[data-selected="true"] span { color: #1e1e1c; }
+.bb-model-controls .bb-camera-toolbar { gap: 8px; flex: 1 1 100%; }
+.bb-camera-toolbar > div { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.bb-camera-zoom output { min-width: 48px; text-align: center; color: #1e1e1c; font: 12px var(--font-mono, monospace); }
+.bb-model-controls button { background: #fff; color: #1e1e1c; border-color: #e5e5e5; }
+.bb-model-controls button:disabled { cursor: default; color: #727272; background: #f5f5f5; }
+.bb-model-controls button[aria-pressed="true"] { color: #1e1e1c; background: var(--acid-lime, #d7ff3f); border-color: #1e1e1c; }
+.bb-camera-focus { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 11px; color: #646464; width: 100%; }
+.bb-camera-focus select { max-width: 100%; width: min(260px, 100%); min-height: 44px; padding: 8px 12px; border: 1px solid #e5e5e5; border-radius: 6px; background: #fff; color: #1e1e1c; font: 12px var(--font-interface); }
+.bb-model-camera-help { font-size: 11px; color: #646464; line-height: 1.6; padding: 0 22px 12px; margin: 0; }
+.bb-model-record summary { min-height: 44px; display: flex; align-items: center; }
+.bb-model-record button { min-height: 44px; }
+.bb-touch-camera { display: none; }
+.bb-saved-twin { border-top: 1px solid var(--line, #e5e5e5); padding: 20px; margin-top: 12px; }
+.bb-saved-twin > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.bb-saved-twin > header h3 { margin: 0 0 6px; font-size: 16px; }
+.bb-saved-twin > header p { margin: 0; font-size: 12px; color: var(--muted, #646464); }
+.bb-saved-twin > .small { margin: 12px 0; }
+.bb-saved-twin-switch { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 16px; }
+.bb-saved-twin-switch button { min-height: 44px; padding: 10px 14px; font: 12px var(--font-interface); border: 1px solid var(--line, #e5e5e5); border-radius: 6px; background: var(--panel, #fff); color: var(--text, #1e1e1c); cursor: pointer; }
+.bb-saved-twin-switch button[aria-pressed="true"] { background: var(--acid-lime, #d7ff3f); color: #1e1e1c; border-color: #1e1e1c; }
+.bb-saved-twin-switch button:focus-visible, .bb-camera-focus select:focus-visible { outline: 2px solid #0059eb; outline-offset: 3px; }
+.bb-saved-twin-record { margin-top: 16px; font-size: 12px; }
+.bb-saved-twin-record summary { cursor: pointer; min-height: 44px; }
+@media (hover:hover) and (pointer:fine) {
+ .bb-model-controls button:hover:not(:disabled):not([aria-pressed="true"]) { background: #f5f5f5; }
+ .bb-response-model .bb-model-label:hover:not([data-selected="true"]) { background: #f5f5f5; border-color: #bdbdbd; }
+ .bb-response-model .bb-model-label[data-selected="true"]:hover { background: var(--acid-lime, #d7ff3f); }
+}
+@media (pointer:coarse) { .bb-model-controls .bb-touch-camera { display: inline-flex; } }
+@media (max-width:640px) {
+ .bb-model-labels { max-height: 150px; overflow-y: auto; pointer-events: auto; }
+ .bb-model-camera-help { padding-inline: 16px; }
+ .bb-saved-twin { padding: 16px 0; }
+ .bb-saved-twin-switch { flex-direction: column; }
+ .bb-model-controls .bb-touch-camera { display: inline-flex; }
+}
+@media (prefers-reduced-motion:reduce) { .bb-model-label, .bb-model-controls button { transition: none; } }
+html[data-input="keyboard"] .bb-model-controls button:active { transform: none; }

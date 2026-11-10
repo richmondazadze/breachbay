@@ -1,4 +1,5 @@
 import 'server-only';
+import { investigateOperational, type OperationalContext } from './operational-investigation';
 import type { ProviderCallEventType } from '../contracts';
 import { citationManifest, mayCorrectCitation } from './citation-guidance';
 import { OutputValidationError, type FailureStage } from './diagnostics';
@@ -16,6 +17,7 @@ import { AIError, callNemotron, providerConfig, type ModelMessage, type ToolDefi
 export interface InvestigationContext { incidentId: string; summary: string; scenario: Scenario; evidence: SanitizedEvidence[] }
 export interface InvestigationEvent { eventId: string; runId: string; incidentId: string; time: string; type: ProviderCallEventType | 'run_started' | 'tool_started' | 'tool_completed' | 'tool_failed' | 'finding' | 'proposal' | 'run_completed' | 'run_failed'; provider: 'NVIDIA'; model: string; data: Record<string, unknown> }
 export interface InvestigationPorts {
+  loadOperationalContext?(incidentId: string): Promise<OperationalContext>;
   /** Backend must authorize caller and return approved sanitized evidence only. */
   loadContext(incidentId: string): Promise<InvestigationContext>;
   persistEvent(event: InvestigationEvent): Promise<void>;
@@ -95,6 +97,7 @@ export async function executeInvestigationTool(name: string, args: Record<string
   }
 }
 export async function investigate(incidentId: string, objective: string, ports: InvestigationPorts, onEvent?: (event: InvestigationEvent) => void, externalSignal?: AbortSignal, backendSignal?: AbortSignal) {
+  if (ports.loadOperationalContext) return investigateOperational(incidentId, objective, ports, onEvent, externalSignal, backendSignal);
   if (!objective.trim() || objective.length > 2000) throw new AIError('INVALID_MODEL_OUTPUT', 'Objective must be 1–2000 characters');
   if (backendSignal?.aborted) throw new AuthError('DEPENDENCY_UNAVAILABLE', 'Investigation stopped by backend; read canonical run status');
   const safeObjective = sanitizeFreeText(objective);

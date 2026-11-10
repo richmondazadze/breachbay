@@ -15,9 +15,19 @@ test("unavailable usage remains absent; estimates never become reported token co
   assert.equal(unavailable?.promptTokens, undefined); assert.equal(unavailable?.usageEstimate, undefined);
 });
 test("provider allowlist rejects unsafe endpoint, identity, outcome, scope and invalid numerical attribution", () => {
-  for (const change of [{ endpoint: "https://user:secret@example.com/api" }, { endpoint: "https://example.com/api?key=secret" }, { endpoint: "http://example.com/api" }, { endpoint: "https://example.com/api#secret" }, { providerCallId: "body-id" }, { classification: "RESTRICTED" }, { durationMs: 120001 }, { outcome: "started" }, { step: 8 }, { monetaryCost: 0.1 }, { promptTokens: -1, completionTokens: 1.5, totalTokens: 10000001 }]) assert.equal(providerCallDetails({ type: "provider_call_completed", dataJson: JSON.stringify({ ...providerBase, ...change }) }), undefined);
+  for (const change of [{ endpoint: "https://user:secret@example.com/api" }, { endpoint: "https://example.com/api?key=secret" }, { endpoint: "http://example.com/api" }, { endpoint: "https://example.com/api#secret" }, { providerCallId: "body-id" }, { classification: "UNKNOWN" }, { durationMs: 120001 }, { outcome: "started" }, { step: 8 }, { monetaryCost: 0.1 }, { promptTokens: -1, completionTokens: 1.5, totalTokens: 10000001 }]) assert.equal(providerCallDetails({ type: "provider_call_completed", dataJson: JSON.stringify({ ...providerBase, ...change }) }), undefined);
   assert.equal(providerCallDetails({ type: "provider_call_started", dataJson: JSON.stringify({ ...providerBase, outcome: "started" }) }), undefined);
   assert.equal(providerCallDetails({ type: "provider_call_failed", dataJson: JSON.stringify({ ...providerBase, outcome: "failed", code: "raw-error-body" }) }), undefined);
+});
+
+test("approved operational traces preserve their classification and bounded provider activity without exposing evidence", () => {
+  for (const classification of ["INTERNAL", "RESTRICTED"] as const) {
+    const data = providerCallDetails({ type: "provider_call_completed", dataJson: JSON.stringify({ ...providerBase, classification, prompt: "PRIVATE_LOGS", evidence: [{ original: "PRIVATE_ORIGINAL" }], responseBody: "PRIVATE_RESPONSE" }) });
+    assert.equal(data?.classification, classification);
+    assert.equal(data?.durationMs, 123);
+    assert.equal(data?.totalTokens, 10);
+    assert.doesNotMatch(JSON.stringify(data), /PRIVATE_|evidence|original|prompt"|responseBody/);
+  }
 });
 
 test("trace renderer discards prompts, arguments and unsupported payload fields", () => {

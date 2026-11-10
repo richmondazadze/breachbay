@@ -1,4 +1,5 @@
 import "server-only";
+import { operationalModelContext } from "./model-log-context";
 import { requireScope } from "./endpoint";
 import { actionStatusFromSnapshot } from "./action-status";
 import { validatePlanning, type ResponsePlan } from "../ai/planning";
@@ -21,7 +22,7 @@ import {
 } from "./client";
 import type { Scenario } from "../simulation/types";
 import { toolTrace, traceEvidenceIds, safeTraceJson, runDeadlineReached } from "./investigation-trace";
-import { assertServiceSession } from "./service-session-operator";
+import { assertServiceSession } from "./service-principal";
 import { ERROR_CODES } from "../contracts";
 import { completedRunResult } from "./investigation-recovery";
 const abortSignals = new WeakMap<InvestigationPorts,AbortSignal>();
@@ -81,6 +82,8 @@ export function installInvestigationGateway() {
           "FORBIDDEN",
           "Incident investigation permission denied",
         );
+      const operational = snapshot.incident.scenarioId === "evidence-driven";
+      if (operational && !snapshot.evidence.some(e => e.modelApproved && e.classification !== "SYNTHETIC")) throw new AuthError("EVIDENCE_REDACTED", "A commander must review and approve a log derivative before external investigation");
       const started = await executeCommand(conn, command, () =>
         conn.reducers.startInvestigation(command),
       );
@@ -138,8 +141,9 @@ export function installInvestigationGateway() {
       const citationPacket = (ids: string[]) => ids.map(id => {
         const citation = modelEvidence.get(id);
         if (!citation) throw new AIError("INVALID_MODEL_OUTPUT", "Citation not supplied in approved model context");
-        const current = [...conn.db.scopedEvidence.iter()].find(e=>e.id===id && e.incidentId===command.incidentId && e.modelApproved && e.classification==="SYNTHETIC");
+        const current = [...conn.db.scopedEvidence.iter()].find(e=>e.id===id && e.incidentId===command.incidentId && e.modelApproved && (operational ? e.classification!=="SYNTHETIC" : e.classification==="SYNTHETIC"));
         if (!current || current.version!==citation.version) throw new AIError("INVALID_MODEL_OUTPUT", "Citation unavailable or changed");
+        if (operational && current.redactedSha256 !== citation.sha256) throw new AIError("INVALID_MODEL_OUTPUT", "Operational derivative digest changed");
         return citation;
       });
       timer = setTimeout(
@@ -147,7 +151,17 @@ export function installInvestigationGateway() {
         120000,
       );
       const ports: InvestigationPorts = {
+        ...(operational ? { async loadOperationalContext(incidentId: string) {
+          if (incidentId !== command.incidentId) throw new BackendCommandError("FORBIDDEN");
+          const context = snapshotFromConnection(conn, incidentId);
+          if (!context) throw new BackendCommandError("FORBIDDEN");
+          let approved;
+          try { approved = operationalModelContext(context); } catch { throw new BackendCommandError("EVIDENCE_REDACTED"); }
+          for (const e of approved.evidence) modelEvidence.set(e.id, { evidenceId: e.id, version: e.version, sha256: e.sha256 });
+          return approved;
+        } } : {}),
         async loadContext(incidentId) {
+          if (operational) throw new BackendCommandError("FORBIDDEN");
           if (incidentId !== command.incidentId)
             throw new BackendCommandError("FORBIDDEN");
           const state = [...conn.db.scopedScenarios.iter()].find(

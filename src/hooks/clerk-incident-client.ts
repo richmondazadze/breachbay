@@ -60,6 +60,21 @@ export function createClerkIncidentClient(
     return connection;
   }
   return {
+    readOperationalPreview: incidentId => request("/api/responses", { mode: "preview", incidentId }),
+    registerOperationalTarget: c => request("/api/responses", { ...c, mode: "register" }),
+    proposeOperationalResponse: c => request("/api/responses", { ...c, mode: "propose" }),
+    executeOperationalResponse: c => request("/api/responses", { ...c, mode: "execute" }),
+    approveOperationalResponse: c => executeCommand(requireConnection(), c, () => requireConnection().reducers.approveOperationalResponse(c)),
+    retireOperationalTarget: c => executeCommand(requireConnection(), c, () => requireConnection().reducers.retireOperationalTarget(c)),
+    withdrawOperationalResponse: c => executeCommand(requireConnection(), c, () => requireConnection().reducers.withdrawOperationalResponse(c)),
+    previewEvidence: async (c) => {
+      const token = await getToken();
+      if (!token) throw new Error("Sign in again before reviewing the log.");
+      const response = await fetch("/api/evidence/preview", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: evidenceForm(c), credentials: "same-origin", cache: "no-store" });
+      if (!response.headers.get("content-type")?.includes("application/json")) throw new Error("No confirmed preview was returned.");
+      return response.json();
+    },
+    approveEvidenceForModel: (c) => executeCommand(requireConnection(), c, () => requireConnection().reducers.approveEvidenceForModel(c)),
     setIncidentRetentionPolicy: (command) => setIncidentRetentionPolicy(requireConnection(), command),
     session: () => request<BackendSession>("/api/auth/session"),
     uploadEvidence: async (c) => {

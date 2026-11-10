@@ -7,5 +7,5 @@ export function subscriptionFailureMessage(error: unknown): string {
     if (error.message === "Sign in again to restore your session.") return error.message;
     if (error.message === "TLS endpoint required") return "Secure connection configuration is required. Reference CONNECTION_CONFIGURATION.";
   }
-  return "Unable to establish an authenticated subscription. Sign in again or retry.";
+  return "The database connection is unavailable. BreachBay will retry automatically. If this continues, check that the application and database services are reachable.";
 }

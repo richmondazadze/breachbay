@@ -27,6 +27,8 @@ export function incidentObjectLabel(snapshot: IncidentSnapshot, id: string): str
   const asset = s.assets.find(a => a.id === id); if (asset) return `Asset · ${asset.name}`;
   const indicator = s.indicators.find(i => i.id === id); if (indicator) return `Indicator · ${indicator.kind} ${indicator.normalizedValue}`;
   const proposal = s.proposals.find(p => p.id === id); if (proposal) return `Proposal · ${proposal.action.type.replaceAll("_", " ")}`;
+  const target = s.operationalTargets?.find(t => t.id === id); if (target) return `Application target · ${target.name}`;
+  const response = s.operationalResponses?.find(r => r.id === id); if (response) return `Application response · ${response.operation === "DISABLE_APPLICATION_LOGIN" ? "Disable access" : "Restore login"}`;
   const finding = s.findings.find(f => f.id === id); if (finding) return `Finding · ${finding.title}`;
   const edge = s.edges.find(e => e.id === id);
   if (edge) return `Relationship · ${edge.type}`;

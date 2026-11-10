@@ -5,8 +5,13 @@ import { AuthenticationRecovery } from "./auth/authentication-recovery";
 import type { IncidentClient, EvidenceUploadCommand, ProtectedDownload } from "@/hooks/use-incident";
 import { syntheticFile } from "@/hooks/protected-transfers";
 import { Button } from "./ui/button";
+import { OperationalEvidenceUpload } from "./operational-evidence";
+import type { Classification } from "@/lib/contracts";
 
-export function EvidenceUpload({ incidentId, client, disabled, hidden, command, attempt }: {
+export function EvidenceUpload(props: { incidentId: string; classification?: Classification; client: IncidentClient; disabled: boolean; hidden: boolean; attempt: RefObject<EvidenceUploadCommand | null>; command: (operation: () => Promise<CommandResult<{ id: string }>>) => Promise<boolean> }) {
+  return props.classification && props.classification !== "SYNTHETIC" ? <OperationalEvidenceUpload {...props} classification={props.classification} /> : <SyntheticEvidenceUpload {...props} />;
+}
+function SyntheticEvidenceUpload({ incidentId, client, disabled, hidden, command, attempt }: {
   incidentId: string; client: IncidentClient; disabled: boolean; hidden: boolean;
   attempt: RefObject<EvidenceUploadCommand | null>;
   command: (operation: () => Promise<CommandResult<{ id: string }>>) => Promise<boolean>;

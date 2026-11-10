@@ -5,7 +5,10 @@ export function evidenceForm(command: EvidenceUploadCommand): FormData {
   const form = new FormData();
   form.set("incidentId", command.incidentId);
   form.set("file", command.file);
-  form.set("classification", "SYNTHETIC");
+  form.set("classification", command.classification ?? "SYNTHETIC");
+  if (command.logFormat) form.set("logFormat", command.logFormat);
+  if (command.source) form.set("source", command.source);
+  if (command.sourceHost) form.set("sourceHost", command.sourceHost);
   form.set("modelApproved", String(command.modelApproved));
   form.set("title", command.title);
   if (command.capturedAt) form.set("capturedAt", command.capturedAt);

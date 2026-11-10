@@ -10,7 +10,7 @@
 .bb-model-label { position: absolute; left: var(--bb-label-left); top: var(--bb-label-top); width: max-content; max-width: 138px; min-height: 44px; padding: 6px 9px; text-align: center; border: 1px solid #e5e5e5; background: #fff; border-radius: 6px; color: var(--model-ink); box-shadow: none; transform: translate(-50%, -50%); pointer-events: auto; cursor: pointer; font-family: var(--font-interface); transition: border-color 160ms ease, background-color 160ms ease; }
 .bb-model-label strong { font-family: var(--font-interface); display: block; font-size: 11px; font-weight: 550; line-height: 1.25; letter-spacing: -.025em; }
 .bb-model-label span { display: block; margin-top: 3px; font-size: 9px; color: #667389; line-height: 1.2; }
-.bb-model-label[data-selected=true] { border-color: var(--model-ink); background: var(--acid-lime, #d7ff3f); }
+.bb-model-label[data-selected=true] { border-color: var(--model-ink); background: #eaf0ff; }
 .bb-model-label:focus-visible, .bb-model-controls button:focus-visible, .bb-model-record button:focus-visible { outline: 2px solid #0059eb; outline-offset: 3px; }
 .bb-model-static-hardware { position: absolute; inset: 15% 14% 18%; display: grid; grid-template-columns: repeat(3,1fr); align-content: center; gap: 60px 50px; transform: perspective(800px) rotateX(25deg) rotateZ(-8deg); pointer-events: none; }
 .bb-model-static-hardware > span { position: relative; height: 58px; border-radius: 8px; border: 1px solid #c8d5ea; background: #fff; box-shadow: none; }
@@ -39,14 +39,14 @@
 .bb-model-stage:focus-visible { outline: 2px solid #0059eb; outline-offset: -3px; }
 .bb-model-stage canvas:active { cursor: grabbing; }
 .bb-model-stage canvas[data-touch-controls="true"] { touch-action: none; }
-.bb-response-model .bb-model-label[data-selected="true"] { color: #1e1e1c; background: var(--acid-lime, #d7ff3f); border-color: #1e1e1c; }
+.bb-response-model .bb-model-label[data-selected="true"] { color: #1e1e1c; background: #eaf0ff; border-color: #1e1e1c; }
 .bb-response-model .bb-model-label[data-selected="true"] span { color: #1e1e1c; }
 .bb-model-controls .bb-camera-toolbar { gap: 8px; flex: 1 1 100%; }
 .bb-camera-toolbar > div { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
 .bb-camera-zoom output { min-width: 48px; text-align: center; color: #1e1e1c; font: 12px var(--font-mono, monospace); }
 .bb-model-controls button { background: #fff; color: #1e1e1c; border-color: #e5e5e5; }
 .bb-model-controls button:disabled { cursor: default; color: #727272; background: #f5f5f5; }
-.bb-model-controls button[aria-pressed="true"] { color: #1e1e1c; background: var(--acid-lime, #d7ff3f); border-color: #1e1e1c; }
+.bb-model-controls button[aria-pressed="true"] { color: #1e1e1c; background: #eaf0ff; border-color: #1e1e1c; }
 .bb-camera-focus { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 11px; color: #646464; width: 100%; }
 .bb-camera-focus select { max-width: 100%; width: min(260px, 100%); min-height: 44px; padding: 8px 12px; border: 1px solid #e5e5e5; border-radius: 6px; background: #fff; color: #1e1e1c; font: 12px var(--font-interface); }
 .bb-model-camera-help { font-size: 11px; color: #646464; line-height: 1.6; padding: 0 22px 12px; margin: 0; }
@@ -60,14 +60,14 @@
 .bb-saved-twin > .small { margin: 12px 0; }
 .bb-saved-twin-switch { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 16px; }
 .bb-saved-twin-switch button { min-height: 44px; padding: 10px 14px; font: 12px var(--font-interface); border: 1px solid var(--line, #e5e5e5); border-radius: 6px; background: var(--panel, #fff); color: var(--text, #1e1e1c); cursor: pointer; }
-.bb-saved-twin-switch button[aria-pressed="true"] { background: var(--acid-lime, #d7ff3f); color: #1e1e1c; border-color: #1e1e1c; }
+.bb-saved-twin-switch button[aria-pressed="true"] { background: #eaf0ff; color: #1e1e1c; border-color: #1e1e1c; }
 .bb-saved-twin-switch button:focus-visible, .bb-camera-focus select:focus-visible { outline: 2px solid #0059eb; outline-offset: 3px; }
 .bb-saved-twin-record { margin-top: 16px; font-size: 12px; }
 .bb-saved-twin-record summary { cursor: pointer; min-height: 44px; }
 @media (hover:hover) and (pointer:fine) {
  .bb-model-controls button:hover:not(:disabled):not([aria-pressed="true"]) { background: #f5f5f5; }
  .bb-response-model .bb-model-label:hover:not([data-selected="true"]) { background: #f5f5f5; border-color: #bdbdbd; }
- .bb-response-model .bb-model-label[data-selected="true"]:hover { background: var(--acid-lime, #d7ff3f); }
+ .bb-response-model .bb-model-label[data-selected="true"]:hover { background: #eaf0ff; }
 }
 @media (pointer:coarse) { .bb-model-controls .bb-touch-camera { display: inline-flex; } }
 @media (max-width:640px) {

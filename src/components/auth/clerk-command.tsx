@@ -52,6 +52,7 @@ function CommandList() {
   const [canCreate, setCanCreate] = useState(false);
   const [status, setStatus] = useState("Connecting");
   const [error, setError] = useState("");
+  const [connectionError, setConnectionError] = useState("");
   const [authenticationError, setAuthenticationError] = useState<CommandError | null>(null);
   const [receipt, setReceipt] = useState("");
   const [pending, setPending] = useState(false);
@@ -65,6 +66,7 @@ function CommandList() {
   useEffect(() => {
     generation.current++;
     setError("");
+    setConnectionError("");
     setReceipt("");
     setAuthenticationError(null);
     setIncidents([]);
@@ -107,8 +109,10 @@ function CommandList() {
         return;
       }
       setProfile(profile as User);
+      setConnectionError("");
       const tasks = [...conn.db.scopedTasks.iter()];
       const proposals = [...conn.db.scopedProposals.iter()];
+      const applicationResponses = [...conn.db.scopedOperationalResponses.iter()];
       const audits = [...conn.db.scopedAuditEvents.iter()];
       const scopedIncidents = [...conn.db.scopedIncidents.iter()];
       const memberships = [...conn.db.scopedMemberships.iter()];
@@ -123,7 +127,10 @@ function CommandList() {
       setIncidents([...conn.db.scopedIncidents.iter()].map(incident => {
         const openTasks = tasks.filter(t=>t.incidentId===incident.id && t.state!=="DONE");
         const recordedTimes = [incident.updatedAt,...audits.filter(a=>a.incidentId===incident.id).map(a=>a.createdAt)];
-        return {...incident,openTasks:openTasks.length,myTasks:openTasks.filter(t=>t.assigneeId===profile.id).length,pendingApprovals:proposals.filter(p=>p.incidentId===incident.id && p.status==="PENDING_APPROVAL").length,lastActivity:recordedTimes.sort().at(-1) || incident.updatedAt};
+        const pendingApprovals = incident.scenarioId === "evidence-driven"
+          ? applicationResponses.filter(r => r.incidentId === incident.id && r.status === "PENDING_APPROVAL").length
+          : proposals.filter(p => p.incidentId === incident.id && p.status === "PENDING_APPROVAL").length;
+        return {...incident,openTasks:openTasks.length,myTasks:openTasks.filter(t=>t.assigneeId===profile.id).length,pendingApprovals,lastActivity:recordedTimes.sort().at(-1) || incident.updatedAt};
       }));
       setInvitations([...conn.db.myInvitations.iter()]);
       setCanCreate(
@@ -184,7 +191,7 @@ function CommandList() {
         if (active) {
           clear();
           setStatus("Unable to establish an authenticated database session");
-          setError(subscriptionFailureMessage(error));
+          setConnectionError(subscriptionFailureMessage(error));
           timer = setTimeout(connect, 10000);
         }
       }
@@ -272,6 +279,7 @@ function CommandList() {
     <ApplicationFrame actions={<LogoutControl />}>
       <div className="bb-connection-note"><p role="status">{status === "Server-confirmed scoped incidents" ? "Connected to your workspace" : status}</p><details><summary>Connection details</summary><p>{status}</p></details></div>
       {error && <p className="workflow-error" role="alert">{error}</p>}
+      {connectionError && <p className="workflow-error" role="alert">{connectionError}</p>}
       {receipt && <CommandReceipt receipt={receipt} />}
       <AuthenticationRecovery error={authenticationError} />
       <MissionDashboard incidents={incidents} activity={activity} responders={responders} messages={messages} confirmed={status === "Server-confirmed scoped incidents"}
@@ -288,8 +296,8 @@ function CommandList() {
                     title: title.trim(),
                     description: description.trim(),
                     severity,
-                    classification: "SYNTHETIC",
-                    scenarioId: "credential-compromise",
+                    classification: "INTERNAL",
+                    scenarioId: "evidence-driven",
                   }),
                 )
               ) {
@@ -329,11 +337,10 @@ function CommandList() {
               </select>
             </label>
             <p className="small muted">
-              Creates the replayable synthetic credential-compromise scenario.
-              No production system is changed.
+              Starts an empty incident. Attach source logs to build its evidence and inventory.
             </p>
             <Button disabled={disabled || !title.trim() || !description.trim()}>
-              Create synthetic incident
+              Create incident
             </Button>
           </form>
         ) : undefined} />

@@ -315,6 +315,48 @@ export type MyReceipts = __Infer<typeof MyReceipts>;
 export const MySessions = __t.object("MySessions", {});
 export type MySessions = __Infer<typeof MySessions>;
 
+export const OperationalResponses = __t.object("OperationalResponses", {
+  id: __t.string(),
+  incidentId: __t.string(),
+  targetId: __t.string(),
+  operation: __t.string(),
+  expectedTargetVersion: __t.u32(),
+  expectedStateVersion: __t.u32(),
+  instanceId: __t.string(),
+  payloadDigest: __t.string(),
+  previewJson: __t.string(),
+  evidenceIds: __t.array(__t.string()),
+  rationale: __t.string(),
+  requestedBy: __t.string(),
+  status: __t.string(),
+  version: __t.u32(),
+  approvalBy: __t.option(__t.string()),
+  approvalReason: __t.option(__t.string()),
+  approvalExpiresAt: __t.option(__t.string()),
+  executionId: __t.option(__t.string()),
+  executionBy: __t.option(__t.string()),
+  resultJson: __t.option(__t.string()),
+  createdAt: __t.string(),
+  updatedAt: __t.string(),
+});
+export type OperationalResponses = __Infer<typeof OperationalResponses>;
+
+export const OperationalTargets = __t.object("OperationalTargets", {
+  id: __t.string(),
+  incidentId: __t.string(),
+  connectorId: __t.string(),
+  assetId: __t.string(),
+  name: __t.string(),
+  owner: __t.string(),
+  criticality: __t.string(),
+  active: __t.bool(),
+  version: __t.u32(),
+  instanceId: __t.string(),
+  reviewedBy: __t.string(),
+  reviewedAt: __t.string(),
+});
+export type OperationalTargets = __Infer<typeof OperationalTargets>;
+
 export const Presence = __t.object("Presence", {
   id: __t.string(),
   incidentId: __t.string(),
@@ -484,6 +526,16 @@ export const ScopedMessages = __t.object("ScopedMessages", {
   lease: __t.string(),
 });
 export type ScopedMessages = __Infer<typeof ScopedMessages>;
+
+export const ScopedOperationalResponses = __t.object("ScopedOperationalResponses", {
+  lease: __t.string(),
+});
+export type ScopedOperationalResponses = __Infer<typeof ScopedOperationalResponses>;
+
+export const ScopedOperationalTargets = __t.object("ScopedOperationalTargets", {
+  lease: __t.string(),
+});
+export type ScopedOperationalTargets = __Infer<typeof ScopedOperationalTargets>;
 
 export const ScopedPresence = __t.object("ScopedPresence", {
   lease: __t.string(),

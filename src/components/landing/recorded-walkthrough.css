@@ -1,0 +1,102 @@
+/* A dated application record, distinct from the live incident workspace. */
+.bb-access-record { padding: 28px; border: 1px solid var(--bb-border); border-radius: 8px; background: #fff; }
+.bb-record-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; font-size: 12px; font-weight: 500; }
+.bb-record-switch { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; margin-top: 28px; padding: 4px; border: 1px solid var(--bb-border); border-radius: 6px; }
+.bb-record-switch button { border: 0; border-radius: 4px; background: transparent; min-height: 42px; padding: 10px 8px; color: var(--bb-muted); font-size: 12px; }
+.bb-record-switch button[aria-pressed=true] { background: var(--bb-selection); color: var(--bb-ink); }
+.bb-access-record-title { padding: 26px 0 22px; min-height: 167px; }
+.bb-access-record-title h2 { font-size: 29px; font-weight: 550; letter-spacing: -1px; line-height: 1.16; max-width: 390px; text-wrap: balance; }
+.bb-access-record-title p { font-size: 13px; line-height: 1.65; color: var(--bb-muted); margin-top: 12px; max-width: 400px; }
+.bb-access-checks { margin: 0; }
+.bb-access-checks > div { display: flex; justify-content: space-between; align-items: center; gap: 14px; min-height: 66px; border-top: 1px solid var(--bb-border); }
+.bb-access-checks dt { font-size: 13px; }
+.bb-access-checks dd { margin: 0; display: flex; align-items: center; gap: 18px; font-size: 12px; }
+.bb-check-outcome { display: flex; align-items: center; gap: 8px; min-width: 84px; }
+.bb-check-outcome svg { color: var(--bb-ink); flex-shrink: 0; }
+.bb-access-checks [data-allowed=true] .bb-check-outcome svg { color: var(--bb-blue); }
+.bb-check-code { color: var(--bb-muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+.bb-access-record footer { display: flex; justify-content: space-between; gap: 12px; font-size: 11px; color: var(--bb-muted); border-top: 1px solid var(--bb-border); padding-top: 19px; }
+.bb-access-record .bb-record-boundary { font-size: 10px; line-height: 1.6; color: var(--bb-muted); margin-top: 9px; }
+
+.bb-recorded-workflow .bb-preview-toolbar > strong { font-size: 13px; font-weight: 500; }
+.bb-recorded-workflow .bb-orchestration-steps { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.bb-recorded-workflow .bb-orchestration-status { min-height: 34px; }
+.bb-recorded-workflow .bb-orchestration-status > svg { flex-shrink: 0; color: var(--bb-blue); }
+.bb-recorded-workflow .bb-orchestration-status > span { margin-left: 0; color: var(--bb-muted); }
+.bb-recorded-workflow .bb-orchestration-status > time { margin-left: auto; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.bb-record-stage { border: 1px solid var(--bb-border); border-radius: 6px; min-width: 0; background: #fff; }
+.bb-record-detail { display: flex; flex-direction: column; min-height: 330px; padding: 24px; }
+.bb-record-detail > svg { color: var(--bb-blue); margin-bottom: 16px; }
+.bb-record-detail h3 { font-size: 21px; line-height: 1.25; letter-spacing: -.6px; font-weight: 500; }
+.bb-record-detail > p { font-size: 12px; color: var(--bb-muted); line-height: 1.6; margin-top: 8px; }
+.bb-record-detail-footnote { margin-top: auto; padding-top: 20px; font-size: 10px; color: var(--bb-muted); line-height: 1.5; }
+.bb-record-provider { font-size: 11px; color: var(--bb-muted); margin-bottom: 18px; }
+.bb-record-events { margin: 20px 0 0; }
+.bb-record-events > div { display: grid; grid-template-columns: 110px minmax(0, 1fr); align-items: center; gap: 14px; padding: 10px 0; }
+.bb-record-events dt { font-size: 11px; color: var(--bb-muted); }
+.bb-record-events dd { display: flex; align-items: center; gap: 12px; margin: 0; }
+.bb-record-events strong { min-width: 18px; text-align: right; font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.bb-event-bar { height: 7px; background: #f3f3f3; flex: 1; overflow: hidden; border-radius: 2px; }
+.bb-event-bar i { display: block; height: 100%; width: 100%; background: var(--bb-blue); transform-origin: left; }
+.bb-record-tool-list { list-style: none; margin: 21px 0 0; padding: 0; }
+.bb-record-tool-list li { display: flex; align-items: center; gap: 10px; padding: 13px 0; border-top: 1px solid var(--bb-border); font-size: 11px; }
+.bb-record-tool-list svg { color: var(--bb-blue); flex-shrink: 0; }
+.bb-record-tool-list li > span:last-child { margin-left: auto; color: var(--bb-muted); font-size: 9px; }
+.bb-record-people { display: flex; align-items: center; justify-content: center; gap: 24px; padding: 28px 0 8px; }
+.bb-record-people > div { display: flex; flex-direction: column; align-items: center; gap: 7px; }
+.bb-record-people > div > span { display: grid; place-items: center; width: 44px; height: 44px; background: var(--bb-selection); border: 1px solid var(--bb-border); border-radius: 6px; font-size: 15px; }
+.bb-record-people strong { font-size: 12px; font-weight: 500; }
+.bb-record-people small { font-size: 10px; color: var(--bb-muted); }
+.bb-record-people > svg { color: var(--bb-muted); }
+.bb-record-detail .bb-access-checks { margin-top: 22px; }
+.bb-record-detail .bb-access-checks > div { min-height: 49px; }
+.bb-record-detail .bb-access-checks dt { font-size: 11px; }
+.bb-record-detail .bb-access-checks dd { font-size: 11px; gap: 10px; }
+.bb-record-detail .bb-check-code { font-size: 9px; }
+.bb-record-receipts { margin-top: 24px; }
+.bb-record-receipts > div { display: flex; align-items: center; gap: 13px; padding: 14px 0; border-top: 1px solid var(--bb-border); }
+.bb-record-receipts svg { color: var(--bb-blue); flex-shrink: 0; }
+.bb-record-receipts span { display: flex; flex-direction: column; gap: 4px; }
+.bb-record-receipts strong { font-size: 12px; font-weight: 500; }
+.bb-record-receipts small { font-size: 10px; color: var(--bb-muted); }
+.bb-record-context { display: flex; flex-direction: column; padding: 22px 18px; }
+.bb-record-context h3 { font-size: 15px; line-height: 1.3; letter-spacing: -.25px; font-weight: 500; }
+.bb-record-context dl { margin: 26px 0 0; }
+.bb-record-context dt { font-size: 10px; color: var(--bb-muted); }
+.bb-record-context dd { font-size: 16px; font-weight: 500; letter-spacing: -.25px; margin: 6px 0 0; }
+.bb-record-context p { color: var(--bb-muted); font-size: 11px; line-height: 1.75; margin-top: 17px; }
+.bb-record-context > span { display: flex; align-items: center; gap: 7px; margin-top: auto; padding-top: 24px; font-size: 9px; color: var(--bb-muted); }
+.bb-replay-boundary { color: var(--bb-muted); font-size: 10px; line-height: 1.6; padding: 0 0 20px; }
+
+@media (max-width: 1100px) {
+  .bb-access-record { padding: 23px; }
+  .bb-record-heading { font-size: 11px; gap: 10px; }
+  .bb-record-detail { padding: 20px; min-height: 350px; }
+  .bb-record-detail h3 { font-size: 19px; }
+  .bb-record-tool-list li > span:last-child { display: none; }
+}
+@media (max-width: 600px) {
+  .bb-access-record { padding: 20px; }
+  .bb-record-heading { font-size: 10px; }
+  .bb-record-heading .bb-status-label { font-size: 9px; }
+  .bb-record-switch { margin-top: 20px; }
+  .bb-record-switch button { font-size: 11px; }
+  .bb-access-record-title { min-height: 170px; }
+  .bb-access-record-title h2 { font-size: 26px; letter-spacing: -.8px; }
+  .bb-access-record-title p { font-size: 12px; }
+  .bb-access-checks dt { font-size: 12px; }
+  .bb-access-checks dd { font-size: 11px; gap: 8px; }
+  .bb-check-code { font-size: 9px; }
+  .bb-access-record footer { font-size: 10px; }
+  .bb-recorded-workflow .bb-preview-toolbar > strong { font-size: 12px; }
+  .bb-recorded-workflow .bb-orchestration-status > span { width: auto; padding-left: 0; font-size: 9px; flex: 1; }
+  .bb-recorded-workflow .bb-orchestration-status > time { width: 100%; padding-left: 20px; }
+  .bb-recorded-workflow .bb-orchestration-steps button { min-height: 52px; }
+  .bb-record-detail { min-height: 338px; padding: 20px 16px; }
+  .bb-record-events > div { grid-template-columns: 98px minmax(0, 1fr); }
+  .bb-record-context { padding: 20px 16px; }
+  .bb-record-context dl { margin-top: 16px; }
+  .bb-record-context > span { padding-top: 16px; }
+  .bb-recorded-workflow .bb-scene-caption { min-height: 230px; }
+  .bb-replay-boundary { font-size: 9px; }
+}

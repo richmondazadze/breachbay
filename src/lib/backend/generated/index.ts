@@ -39,24 +39,32 @@ import AcceptInvitationReducer from "./accept_invitation_reducer";
 import AcknowledgeReducer from "./acknowledge_reducer";
 import AdminGrantIncidentReducer from "./admin_grant_incident_reducer";
 import ApproveActionReducer from "./approve_action_reducer";
+import ApproveEvidenceForModelReducer from "./approve_evidence_for_model_reducer";
+import ApproveOperationalResponseReducer from "./approve_operational_response_reducer";
 import AssignTaskReducer from "./assign_task_reducer";
 import AttachEvidenceReducer from "./attach_evidence_reducer";
 import CancelInvestigationReducer from "./cancel_investigation_reducer";
 import CheckpointScenarioReducer from "./checkpoint_scenario_reducer";
+import ClaimOperationalResponseReducer from "./claim_operational_response_reducer";
 import CreateIncidentReducer from "./create_incident_reducer";
 import ExecuteSimulationReducer from "./execute_simulation_reducer";
 import ExportReportReducer from "./export_report_reducer";
 import HeartbeatReducer from "./heartbeat_reducer";
+import IngestLogEvidenceReducer from "./ingest_log_evidence_reducer";
 import InviteMemberReducer from "./invite_member_reducer";
 import LinkGraphEdgeReducer from "./link_graph_edge_reducer";
 import LogoutReducer from "./logout_reducer";
 import PostMessageReducer from "./post_message_reducer";
 import ProposeActionReducer from "./propose_action_reducer";
+import ProposeOperationalResponseReducer from "./propose_operational_response_reducer";
 import ReconcileInvestigationReducer from "./reconcile_investigation_reducer";
 import RecordFindingReducer from "./record_finding_reducer";
 import RecordInvestigationEventReducer from "./record_investigation_event_reducer";
+import RecordOperationalResultReducer from "./record_operational_result_reducer";
 import RecordToolRunReducer from "./record_tool_run_reducer";
+import RegisterOperationalTargetReducer from "./register_operational_target_reducer";
 import RestoreScenarioReducer from "./restore_scenario_reducer";
+import RetireOperationalTargetReducer from "./retire_operational_target_reducer";
 import ReviewGraphEdgeReducer from "./review_graph_edge_reducer";
 import SetIncidentRetentionPolicyReducer from "./set_incident_retention_policy_reducer";
 import SetMemberReducer from "./set_member_reducer";
@@ -64,6 +72,7 @@ import SetUserStatusReducer from "./set_user_status_reducer";
 import SimulateActionReducer from "./simulate_action_reducer";
 import StartInvestigationReducer from "./start_investigation_reducer";
 import TransitionIncidentReducer from "./transition_incident_reducer";
+import WithdrawOperationalResponseReducer from "./withdraw_operational_response_reducer";
 
 // Import all procedure arg schemas
 import * as OpenReadSessionProcedure from "./open_read_session_procedure";
@@ -88,6 +97,8 @@ import ScopedIndicatorsRow from "./scoped_indicators_table";
 import ScopedInvestigationsRow from "./scoped_investigations_table";
 import ScopedMembershipsRow from "./scoped_memberships_table";
 import ScopedMessagesRow from "./scoped_messages_table";
+import ScopedOperationalResponsesRow from "./scoped_operational_responses_table";
+import ScopedOperationalTargetsRow from "./scoped_operational_targets_table";
 import ScopedPresenceRow from "./scoped_presence_table";
 import ScopedProfilesRow from "./scoped_profiles_table";
 import ScopedProposalsRow from "./scoped_proposals_table";
@@ -224,6 +235,20 @@ const tablesSchema = __schema({
     constraints: [
     ],
   }, ScopedMessagesRow),
+  scopedOperationalResponses: __table({
+    name: 'scoped_operational_responses',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, ScopedOperationalResponsesRow),
+  scopedOperationalTargets: __table({
+    name: 'scoped_operational_targets',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, ScopedOperationalTargetsRow),
   scopedPresence: __table({
     name: 'scoped_presence',
     indexes: [
@@ -317,24 +342,32 @@ const reducersSchema = __reducers(
   __reducerSchema("acknowledge", AcknowledgeReducer),
   __reducerSchema("admin_grant_incident", AdminGrantIncidentReducer),
   __reducerSchema("approve_action", ApproveActionReducer),
+  __reducerSchema("approve_evidence_for_model", ApproveEvidenceForModelReducer),
+  __reducerSchema("approve_operational_response", ApproveOperationalResponseReducer),
   __reducerSchema("assign_task", AssignTaskReducer),
   __reducerSchema("attach_evidence", AttachEvidenceReducer),
   __reducerSchema("cancel_investigation", CancelInvestigationReducer),
   __reducerSchema("checkpoint_scenario", CheckpointScenarioReducer),
+  __reducerSchema("claim_operational_response", ClaimOperationalResponseReducer),
   __reducerSchema("create_incident", CreateIncidentReducer),
   __reducerSchema("execute_simulation", ExecuteSimulationReducer),
   __reducerSchema("export_report", ExportReportReducer),
   __reducerSchema("heartbeat", HeartbeatReducer),
+  __reducerSchema("ingest_log_evidence", IngestLogEvidenceReducer),
   __reducerSchema("invite_member", InviteMemberReducer),
   __reducerSchema("link_graph_edge", LinkGraphEdgeReducer),
   __reducerSchema("logout", LogoutReducer),
   __reducerSchema("post_message", PostMessageReducer),
   __reducerSchema("propose_action", ProposeActionReducer),
+  __reducerSchema("propose_operational_response", ProposeOperationalResponseReducer),
   __reducerSchema("reconcile_investigation", ReconcileInvestigationReducer),
   __reducerSchema("record_finding", RecordFindingReducer),
   __reducerSchema("record_investigation_event", RecordInvestigationEventReducer),
+  __reducerSchema("record_operational_result", RecordOperationalResultReducer),
   __reducerSchema("record_tool_run", RecordToolRunReducer),
+  __reducerSchema("register_operational_target", RegisterOperationalTargetReducer),
   __reducerSchema("restore_scenario", RestoreScenarioReducer),
+  __reducerSchema("retire_operational_target", RetireOperationalTargetReducer),
   __reducerSchema("review_graph_edge", ReviewGraphEdgeReducer),
   __reducerSchema("set_incident_retention_policy", SetIncidentRetentionPolicyReducer),
   __reducerSchema("set_member", SetMemberReducer),
@@ -342,6 +375,7 @@ const reducersSchema = __reducers(
   __reducerSchema("simulate_action", SimulateActionReducer),
   __reducerSchema("start_investigation", StartInvestigationReducer),
   __reducerSchema("transition_incident", TransitionIncidentReducer),
+  __reducerSchema("withdraw_operational_response", WithdrawOperationalResponseReducer),
 );
 
 /** The schema information for all procedures in this module. This is defined the same way as the procedures would have been defined in the server. */
@@ -357,7 +391,7 @@ const REMOTE_MODULE = {
     cliVersion: "2.14.1" as const,
   },
   tables: tablesSchema.schemaType.tables,
-  viewsWithArgs: ["my_invitations", "my_receipts", "scoped_acknowledgments", "scoped_approvals", "scoped_assets", "scoped_audit_events", "scoped_edges", "scoped_evidence", "scoped_findings", "scoped_graph_reviews", "scoped_incidents", "scoped_indicators", "scoped_investigations", "scoped_memberships", "scoped_messages", "scoped_presence", "scoped_profiles", "scoped_proposals", "scoped_reports", "scoped_retention_policies", "scoped_scenario_history", "scoped_scenarios", "scoped_simulations", "scoped_stream_events", "scoped_tasks", "scoped_tool_runs", "scoped_verifications"],
+  viewsWithArgs: ["my_invitations", "my_receipts", "scoped_acknowledgments", "scoped_approvals", "scoped_assets", "scoped_audit_events", "scoped_edges", "scoped_evidence", "scoped_findings", "scoped_graph_reviews", "scoped_incidents", "scoped_indicators", "scoped_investigations", "scoped_memberships", "scoped_messages", "scoped_operational_responses", "scoped_operational_targets", "scoped_presence", "scoped_profiles", "scoped_proposals", "scoped_reports", "scoped_retention_policies", "scoped_scenario_history", "scoped_scenarios", "scoped_simulations", "scoped_stream_events", "scoped_tasks", "scoped_tool_runs", "scoped_verifications"],
   reducers: reducersSchema.reducersType.reducers,
   ...proceduresSchema,
 } satisfies __RemoteModule<

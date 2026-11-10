@@ -29,8 +29,11 @@ interface Props {
   onInspect: (id: string) => void;
   onNavigate: (tab: string) => void;
   synthetic?: boolean;
+  operational?: boolean;
+  applicationDecisionPending?: boolean;
   containmentCoverage?: number;
   containmentVersion?: number;
+  verifiedApplicationResponses?: number;
   modelLinks?: ResponseModelLink[];
   modelRunning?: boolean;
   orchestration?: React.ReactNode;
@@ -107,7 +110,7 @@ export function OperationalOverview(p: Props) {
             {p.assessment && <p>{p.assessment}</p>}
             <dl>
               <div>
-                <dt>Assets in scope</dt>
+                <dt>{p.operational ? "Observed assets" : "Assets in scope"}</dt>
                 <dd>{p.assets.length}</dd>
               </div>
               <div>
@@ -182,8 +185,8 @@ export function OperationalOverview(p: Props) {
         <section className="panel topology-panel">
           <div className="panel-title">
             <div>
-              <h2>Response topology</h2>
-              <small>Evidence, dependencies and containment paths</small>
+              <h2>{p.operational ? "Evidence map" : "Response topology"}</h2>
+              <small>{p.operational ? "Observed assets and reviewed relationships" : "Evidence, dependencies and containment paths"}</small>
             </div>
             <Network size={18} />
           </div>
@@ -219,7 +222,7 @@ export function OperationalOverview(p: Props) {
             </span>
           </div>
           <motion.div key={viewMode} initial={instant ? false : {opacity:0}} animate={{opacity:1}} transition={{duration,ease:[0.23,1,0.32,1]}}>{viewMode === "model" ? (
-            <><ResponseModel variant="operational" title="Scoped response model" nodes={shown.map(a=>({id:a.id,label:a.name,kind:a.kind,state:a.state}))} links={(p.modelLinks ?? p.edges.map(e=>({id:e.id,from:e.source,to:e.target,enabled:true,verified:!e.style?.strokeDasharray,label:typeof e.label==="string" ? e.label : undefined}))).filter(e=>ids.has(e.from)&&ids.has(e.to))} onSelect={p.onInspect} instant={instant} running={p.modelRunning ?? false} />{p.recordedComparison && <RecordedResponseTwin {...p.recordedComparison} instant={instant}/>}</>
+            <><ResponseModel variant="operational" title={p.operational ? "Scoped evidence map" : "Scoped response model"} evidenceOnly={p.operational} nodes={shown.map(a=>({id:a.id,label:a.name,kind:a.kind,state:a.state}))} links={(p.modelLinks ?? p.edges.map(e=>({id:e.id,from:e.source,to:e.target,enabled:true,verified:!e.style?.strokeDasharray,label:typeof e.label==="string" ? e.label : undefined}))).filter(e=>ids.has(e.from)&&ids.has(e.to))} onSelect={p.onInspect} instant={instant} running={p.modelRunning ?? false} />{p.recordedComparison && <RecordedResponseTwin {...p.recordedComparison} instant={instant}/>}</>
           ) : viewMode === "list" ? (
             <div className="asset-list">
               {shown.map((a) => (
@@ -271,12 +274,12 @@ export function OperationalOverview(p: Props) {
             </div>
             <div>
               <strong>
-                {p.containmentCoverage === undefined
+                {p.operational ? p.verifiedApplicationResponses ?? 0 : p.containmentCoverage === undefined
                   ? "—"
                   : `${Math.round(p.containmentCoverage * 100)}%`}
               </strong>
               <span>
-                {p.containmentCoverage === undefined
+                {p.operational ? "Verified application effects" : p.containmentCoverage === undefined
                   ? "Containment coverage unavailable"
                   : p.containmentVersion === undefined ? "Latest simulated containment preview" : `Containment preview for scenario v${p.containmentVersion}`}
               </span>
@@ -286,8 +289,8 @@ export function OperationalOverview(p: Props) {
         <div className="panel topology-note">
           <span className="eyebrow">Operational boundary</span>
           <p>
-            {p.synthetic
-              ? "Synthetic scenario preview. No live model, authentication or response execution is connected."
+            {p.operational ? "Logs describe past observations. Application responses require human approval and independent checks; they do not establish host or network containment." : p.synthetic
+              ? "Synthetic scenario. Modeled effects do not establish real containment."
               : "Subscriptions are authoritative. Preview predictions do not establish verified containment."}
           </p>
         </div>
@@ -302,8 +305,8 @@ export function OperationalOverview(p: Props) {
         {p.communications}
         <section className="panel">
           <div className="panel-title">
-            <h2>Decision queue</h2>
-            <span>Human approval</span>
+            <h2>{p.operational ? "Application responses" : "Decision queue"}</h2>
+            <span>{p.operational && !p.applicationDecisionPending ? "Recorded results" : "Human approval"}</span>
           </div>
           {p.decisions}
         </section>

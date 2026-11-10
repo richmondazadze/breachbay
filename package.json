@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "local:check": "node --conditions=react-server --import tsx tools/lab/local-auth.mjs",
+    "local:repair-auth": "node --conditions=react-server --import tsx tools/lab/local-auth.mjs --repair"
   },
   "dependencies": {
     "@clerk/nextjs": "7.9.25",

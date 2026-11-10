@@ -25,8 +25,19 @@ for attempt in $(seq 1 60); do tunnel_url=$(rg -o 'https://[a-z-]+\.trycloudflar
 [[ -n "$tunnel_url" ]] || { echo 'Synthetic validation TLS tunnel unavailable' >&2; exit 1; }
 # Wait for tunnel registration before the module asks it to validate fixture tokens.
 for attempt in $(seq 1 60); do if rg -q 'Registered tunnel connection' "$test_dir/tunnel.log"; then break; fi; sleep 0.5; done
+# Tunnel registration can precede public DNS propagation. Do not misdiagnose
+# a transport lookup failure as an authentication/reducer regression.
+node --input-type=module - "$tunnel_url" <<'JS'
+import { lookup } from 'node:dns/promises';
+const hostname = new URL(process.argv[2]).hostname;
+for (let attempt = 0; ; attempt++) {
+  try { await lookup(hostname); break; }
+  catch { if (attempt >= 119) throw new Error('Validator tunnel DNS unavailable'); }
+  await new Promise(resolve => setTimeout(resolve, 1000));
+}
+JS
 database="breachbay-security-$(date +%s)-$RANDOM"
-AUTH_VALIDATION_URL="$tunnel_url/api/auth/validate" OIDC_ISSUER=localhost OIDC_AUDIENCE=breachbay-test BOOTSTRAP_COMMANDER_SUBJECTS=alice,dave SERVICE_SUBJECTS=ai spacetime publish --server "http://127.0.0.1:$port" --module-path spacetimedb --no-config --yes=skip-login "$database"
+AUTH_VALIDATION_URL="$tunnel_url/api/auth/validate" OIDC_ISSUER=localhost OIDC_AUDIENCE=breachbay-test BOOTSTRAP_COMMANDER_SUBJECTS=alice,dave SERVICE_SUBJECTS=ai RESPONSE_SIGNING_KEY="${BREACHBAY_TEST_RESPONSE_SIGNING_KEY:-}" spacetime publish --server "http://127.0.0.1:$port" --module-path spacetimedb --no-config --yes=skip-login "$database"
 if ! BREACHBAY_TEST_ENDPOINT="http://127.0.0.1:$port" BREACHBAY_TEST_DATABASE="$database" BREACHBAY_TEST_KEY_PATH="$test_dir/private.pem" BREACHBAY_TEST_PUBLIC_KEY_PATH="$test_dir/public.pem" node_modules/.bin/tsx src/lib/backend/tests/live-security.ts; then
   spacetime logs --server "http://127.0.0.1:$port" --no-config "$database" --num-lines 12
   exit 1

@@ -1,13 +1,15 @@
 /** Real loopback-only Spacetime integration. Ephemeral signing keys must live outside the repo. */
 import assert from "node:assert/strict";
 import {installCspSafeCodecs} from "../csp-codecs";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { randomUUID, createHash } from "node:crypto";
 import { SignJWT, importPKCS8, importSPKI, jwtVerify } from "jose";
 import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
 import { DbConnection } from "../generated";
 import { sha256, canonical } from "../../../../spacetimedb/src/hash";
+import { parseLog } from "../../evidence/parse-log";
+import { logDerivative } from "../../evidence/import-manifest";
 const endpoint = process.env.BREACHBAY_TEST_ENDPOINT ?? "http://127.0.0.1:3100";
 const database =
   process.env.BREACHBAY_TEST_DATABASE ?? "breachbay-security-smoke";
@@ -148,6 +150,8 @@ async function main() {
             "SELECT * FROM scoped_findings",
             "SELECT * FROM scoped_stream_events",
             "SELECT * FROM scoped_assets",
+            "SELECT * FROM scoped_operational_targets",
+            "SELECT * FROM scoped_operational_responses",
             "SELECT * FROM scoped_edges",
             "SELECT * FROM scoped_graph_reviews",
             "SELECT * FROM scoped_scenarios",
@@ -195,6 +199,191 @@ async function main() {
     return [...conn.db.myReceipts.iter()].find(
       (r) => r.correlationId === m.correlationId,
     )!.objectId;
+  }
+  if (process.env.BREACHBAY_SECURITY_SMOKE_SCOPE === "production-ingestion") {
+    assert(process.env.BREACHBAY_TEST_LOG_PATH, "Actual captured log path required");
+    const raw = await readFile(process.env.BREACHBAY_TEST_LOG_PATH);
+    const observations = parseLog(raw, "breachbay-jsonl");
+    const make = meta();
+    const caseId = await result(a, () => a.reducers.createIncident({ ...make, title: "Actual application log review", description: "Logs captured from actual HTTP/authentication and SQLite work in an owned local process", severity: "HIGH", classification: "INTERNAL", scenarioId: "evidence-driven" }), make);
+    await eventually(() => [...a.db.scopedIncidents.iter()].some(i => i.id === caseId), "Empty incident missing");
+    for (const table of [a.db.scopedEvidence, a.db.scopedAssets, a.db.scopedEdges, a.db.scopedScenarios]) assert.equal([...table.iter()].filter(r => r.incidentId === caseId).length, 0, "Operational creation seeded data");
+    const getUser = (c: DbConnection) => [...c.db.myProfile.iter()][0].id;
+    for (const [c, role] of [[b, "INVESTIGATOR"], [o, "OBSERVER"], [service, "AI_SERVICE"]] as const) await a.reducers.setMember({ ...meta(), incidentId: caseId, userId: getUser(c), role, active: true });
+    const derivative = logDerivative(caseId, observations), originalHash = createHash("sha256").update(raw).digest("hex");
+    const m = meta();
+    const payload = { ...m, incidentId: caseId, title: "Actual application.jsonl", source: "Owned local application capture", classification: "INTERNAL", sha256: originalHash, redactedSha256: sha256(derivative), redactedContent: derivative, observationsJson: JSON.stringify(observations), storageRef: `private-evidence:${originalHash}` };
+    await assert.rejects(x.reducers.ingestLogEvidence(payload), /FORBIDDEN/);
+    await assert.rejects(o.reducers.ingestLogEvidence(payload), /FORBIDDEN/);
+    await assert.rejects(service.reducers.ingestLogEvidence(payload), /FORBIDDEN/);
+    await assert.rejects(b.reducers.ingestLogEvidence({ ...payload, redactedSha256: "0".repeat(64) }), /INVALID_INPUT/);
+    assert.equal([...a.db.scopedAssets.iter()].filter(r => r.incidentId === caseId).length, 0, "Rejected import partially created assets");
+    const evidenceId = await result(b, () => b.reducers.ingestLogEvidence(payload), m);
+    await eventually(() => [...a.db.scopedEvidence.iter()].some(e => e.id === evidenceId), "Import did not propagate live");
+    const e = [...a.db.scopedEvidence.iter()].find(e => e.id === evidenceId)!;
+    assert.equal(e.modelApproved, false); assert.equal(e.sha256, originalHash); assert.equal(e.redactedContent, derivative);
+    assert.equal([...service.db.scopedEvidence.iter()].filter(e => e.incidentId === caseId).length, 0, "Service read unapproved logs");
+    const assets = [...a.db.scopedAssets.iter()].filter(e => e.incidentId === caseId);
+    assert(assets.length > 0); assert(assets.every(e => e.state === "UNKNOWN"));
+    assert([...a.db.scopedEdges.iter()].filter(e => e.incidentId === caseId).every(e => e.verificationStatus === "HYPOTHESIS"));
+    await b.reducers.ingestLogEvidence(payload);
+    const retry = meta(); await result(b, () => b.reducers.ingestLogEvidence({ ...payload, ...retry }), retry);
+    assert.equal([...a.db.scopedEvidence.iter()].filter(e => e.incidentId === caseId).length, 1, "Duplicate original produced another evidence record");
+    await assert.rejects(b.reducers.ingestLogEvidence({ ...payload, ...meta(), source: "Different collection claim" }), /IDEMPOTENCY_CONFLICT/);
+    const approval = { ...meta(), incidentId: caseId, evidenceId, expectedVersion: e.version, approved: true, reason: "Reviewed the exact pseudonymous derivative from the owned lab capture" };
+    await assert.rejects(b.reducers.approveEvidenceForModel(approval), /FORBIDDEN/);
+    await assert.rejects(service.reducers.approveEvidenceForModel(approval), /FORBIDDEN/);
+    await a.reducers.approveEvidenceForModel(approval);
+    await eventually(() => [...service.db.scopedEvidence.iter()].some(e => e.id === evidenceId && e.modelApproved), "Approved derivative not exposed to scoped service");
+    if (process.env.BREACHBAY_TEST_OPERATIONAL_PROVIDER === "1") {
+      const { investigateOperational } = await import("../../ai/operational-investigation");
+      const { operationalModelContext } = await import("../model-log-context");
+      const { snapshotFromConnection } = await import("../client");
+      const started = meta(), canonicalRun = await result(b, () => b.reducers.startInvestigation({ ...started, incidentId: caseId, objective: "Review approved actual authentication and database log observations, cite the evidence, distinguish observations from compromise and suggest next queries" }), started);
+      const recorded: import("../../ai/investigation").InvestigationEvent[] = [];
+      const ports: import("../../ai/investigation").InvestigationPorts = {
+        loadContext: async () => { throw new Error("No synthetic context"); },
+        loadOperationalContext: async () => operationalModelContext(snapshotFromConnection(service, caseId)!),
+        submitProposal: async () => { throw new Error("Model may not execute or propose this response connector"); },
+        persistEvent: async event => {
+          const m = meta();
+          if(event.type === "finding") {
+            const f = event.data.finding as import("../../ai/evidence").Finding;
+            await service.reducers.recordFinding({ ...m, incidentId: caseId, runId: canonicalRun, title: f.summary.slice(0,150), summary: f.summary, confidence: f.confidence, evidenceIds: f.evidenceIds, assetIds: [], unknowns: f.unknowns, recommendedNextQueries: f.recommendedNextQueries });
+          }
+          if(event.type === "tool_completed") {
+            const d=event.data, ids=d.tool === "search_evidence" ? (d.result as {id:string}[]).map(e=>e.id) : [];
+            const approved=[...service.db.scopedEvidence.iter()];
+            await service.reducers.recordToolRun({ ...meta(), incidentId: caseId, runId: canonicalRun, tool: String(d.tool), argumentsDigest: String(d.argumentsDigest), toolCallId: String(d.toolCallId), providerLatencyMs: Number(d.providerLatencyMs), durationMs: Number(d.durationMs), resultJson: JSON.stringify(d.result), citationsJson: JSON.stringify(ids.map(id=>{const e=approved.find(e=>e.id===id)!;return{evidenceId:id,version:e.version,sha256:e.redactedSha256};})), failureCode: undefined, status: "COMPLETED", evidenceIds: ids, summary: "Validated approved operational read" });
+          }
+          await service.reducers.recordInvestigationEvent({ ...meta(), incidentId: caseId, runId: canonicalRun, type: event.type, provider: event.provider, model: event.model, tool: typeof event.data.tool === "string" ? event.data.tool : undefined, summary: undefined, dataJson: JSON.stringify(event.data) });
+          recorded.push(event);
+        },
+      };
+      const inferred = await investigateOperational(caseId, "Review the actual approved log observations with the evidence, asset graph and observation-count tools. Cite supported authentication and database observations, explain uncertainty and recommend next queries. Do not assert current compromise or propose actions.", ports);
+      await eventually(() => [...a.db.scopedInvestigations.iter()].some(r=>r.id===canonicalRun&&r.status==="COMPLETED"), "Actual operational provider completion not persisted");
+      assert.equal(inferred.proposalId,undefined);assert(inferred.findings.length>0);
+      assert.equal([...a.db.scopedProposals.iter()].filter(p=>p.incidentId===caseId).length,0);
+      assert(recorded.filter(e=>e.type.startsWith("provider_call")).every(e=>e.data.classification==="INTERNAL"));
+      if(process.env.BREACHBAY_LAB_REPORT_DIR) {
+        await mkdir(process.env.BREACHBAY_LAB_REPORT_DIR,{recursive:true,mode:0o700});
+        await writeFile(`${process.env.BREACHBAY_LAB_REPORT_DIR}/database-provider-result.json`,JSON.stringify({proof:"Actual NVIDIA calls and SpacetimeDB persistence with test-only signed identities; not genuine Clerk/deployed E2E",canonicalRun,inferred,trace:recorded},null,2),{mode:0o600});
+      }
+      console.log("PASS real NVIDIA investigation over actual approved logs, actual SpacetimeDB tools/findings/planning/telemetry persistence and no AI execution");
+    }
+    if (process.env.BREACHBAY_RESPONSE_CONNECTOR_FILE) {
+      const { previewApplication, signedResponse, executeApplication } = await import("../../response/local-application");
+      const preview = await previewApplication(caseId);
+      const registration = { ...meta(), incidentId: caseId, ...signedResponse(preview.preview, preview.connector.signingKey), name: preview.connector.name, owner: "Owned integration application", criticality: "HIGH", expectedVersion: 0, reason: "Reviewed actual producing-system log and signed application observation" };
+      for (const denied of [b, service, x]) await assert.rejects(denied.reducers.registerOperationalTarget(registration), /FORBIDDEN/);
+      await assert.rejects(a.reducers.registerOperationalTarget({ ...registration, signature: "0".repeat(64) }), /FORBIDDEN/);
+      const targetId = await result(a, () => a.reducers.registerOperationalTarget(registration), registration);
+      await eventually(() => [...b.db.scopedOperationalTargets.iter()].some(t => t.id === targetId), "Reviewed target did not propagate");
+      assert.equal([...service.db.scopedOperationalTargets.iter()].length, 0, "AI service received human response targets");
+      let target = [...a.db.scopedOperationalTargets.iter()].find(t => t.id === targetId)!;
+      await a.reducers.registerOperationalTarget(registration);
+      assert.equal([...a.db.scopedOperationalTargets.iter()].find(t => t.id === targetId)!.version, target.version, "Exact proof retry renewed target scope");
+      const stalePreview = { ...preview.preview, observation: { ...preview.preview.observation, observedAt: new Date(Date.now() - 180000).toISOString() } };
+      await assert.rejects(a.reducers.registerOperationalTarget({ ...registration, ...meta(), expectedVersion: target.version, ...signedResponse(stalePreview, preview.connector.signingKey) }), /VERSION_CONFLICT/);
+      const sourceAsset = [...a.db.scopedAssets.iter()].find(asset => asset.id === target.assetId)!;
+      assert.equal(sourceAsset.state, "UNKNOWN", "Target review invented host health"); assert.equal(sourceAsset.criticality, "HIGH"); assert(!sourceAsset.riskLabels.includes("CRITICALITY_UNREVIEWED"));
+      const propose = async (operation: "DISABLE_APPLICATION_LOGIN" | "ENABLE_APPLICATION_LOGIN") => {
+        const p = await previewApplication(caseId), m = meta();
+        const args = { ...m, incidentId: caseId, targetId, operation, expectedTargetVersion: target.version, ...signedResponse(p.preview, p.connector.signingKey), evidenceIds: [evidenceId], rationale: "Reviewed actual application authentication outcomes and application access tradeoff" };
+        await assert.rejects(service.reducers.proposeOperationalResponse(args), /FORBIDDEN/);
+        return result(b, () => b.reducers.proposeOperationalResponse(args), m);
+      };
+      const responseId = await propose("DISABLE_APPLICATION_LOGIN");
+      await eventually(() => [...a.db.scopedOperationalResponses.iter()].some(r => r.id === responseId), "Operational proposal missing");
+      const row = () => [...a.db.scopedOperationalResponses.iter()].find(r => r.id === responseId)!;
+      const approval = { ...meta(), incidentId: caseId, responseId, expectedVersion: row().version, decision: "APPROVE", reason: "Accept scoped application login/session disruption; health endpoint remains available" };
+      for (const denied of [b, service, x]) await assert.rejects(denied.reducers.approveOperationalResponse(approval), /FORBIDDEN/);
+      const staleCommander = (await connect("alice", "breachbay-test", 1200)).connection;
+      await assert.rejects(staleCommander.reducers.approveOperationalResponse(approval), /UNAUTHENTICATED/);
+      staleCommander.disconnect();
+      await assert.rejects(a.reducers.claimOperationalResponse({ ...meta(), incidentId: caseId, responseId, expectedVersion: row().version }), /FORBIDDEN/);
+      await a.reducers.approveOperationalResponse(approval);
+      await eventually(() => row().status === "APPROVED", "Human response approval missing");
+      await a.reducers.setMember({ ...meta(), incidentId: caseId, userId: getUser(b), role: "INVESTIGATOR", active: false });
+      await assert.rejects(a.reducers.claimOperationalResponse({ ...meta(), incidentId: caseId, responseId, expectedVersion: row().version }), /FORBIDDEN/);
+      await a.reducers.setMember({ ...meta(), incidentId: caseId, userId: getUser(b), role: "INVESTIGATOR", active: true });
+      const claim = { ...meta(), incidentId: caseId, responseId, expectedVersion: row().version };
+      await assert.rejects(service.reducers.claimOperationalResponse(claim), /FORBIDDEN/);
+      await a.reducers.claimOperationalResponse(claim);
+      await eventually(() => row().status === "EXECUTING", "Durable execution claim missing");
+      await a.reducers.claimOperationalResponse(claim);
+      assert.equal(row().executionId, `${responseId}:execution`);
+      const executing = row() as unknown as import("../../response/contract").OperationalResponse;
+      const observed = await executeApplication(executing, target.connectorId, true);
+      assert.equal(observed.result.status, "VERIFIED_SUCCESS");
+      const record = { ...meta(), incidentId: caseId, responseId, proofJson: observed.proofJson, signature: observed.signature };
+      await assert.rejects(a.reducers.recordOperationalResult({ ...record, signature: "0".repeat(64) }), /FORBIDDEN/);
+      await a.reducers.recordOperationalResult(record);
+      await eventually(() => row().status === "VERIFIED_SUCCESS", "Signed independent response verification missing");
+      const replay = await executeApplication(executing, target.connectorId, false);
+      assert.deepEqual(replay.result.receipt, observed.result.receipt, "Receipt recovery changed effect identity");
+      assert.equal(replay.result.observation?.version, observed.result.observation?.version, "Receipt recovery repeated mutation");
+      const recoveryId = await propose("ENABLE_APPLICATION_LOGIN");
+      await eventually(() => [...a.db.scopedOperationalResponses.iter()].some(r => r.id === recoveryId), "Recovery proposal missing");
+      const recoveryRow = () => [...a.db.scopedOperationalResponses.iter()].find(r => r.id === recoveryId)!;
+      await a.reducers.approveOperationalResponse({ ...meta(), incidentId: caseId, responseId: recoveryId, expectedVersion: recoveryRow().version, decision: "APPROVE", reason: "Restore new application logins; prior revoked sessions remain invalid" });
+      await eventually(() => recoveryRow().status === "APPROVED", "Recovery approval missing");
+      await a.reducers.claimOperationalResponse({ ...meta(), incidentId: caseId, responseId: recoveryId, expectedVersion: recoveryRow().version });
+      await eventually(() => recoveryRow().status === "EXECUTING", "Recovery claim missing");
+      const recovered = await executeApplication(recoveryRow() as unknown as import("../../response/contract").OperationalResponse, target.connectorId, true);
+      assert.equal(recovered.result.status, "VERIFIED_SUCCESS");
+      await a.reducers.recordOperationalResult({ ...meta(), incidentId: caseId, responseId: recoveryId, proofJson: recovered.proofJson, signature: recovered.signature });
+      await eventually(() => recoveryRow().status === "VERIFIED_SUCCESS", "Recovery verification missing");
+      await assert.rejects(a.reducers.withdrawOperationalResponse({ ...meta(), incidentId: caseId, responseId: recoveryId, expectedVersion: recoveryRow().version, reason: "Cannot withdraw an executed effect" }), /INVALID_TRANSITION/);
+      const retiredResponseId = await propose("DISABLE_APPLICATION_LOGIN");
+      const retiredRow = () => [...a.db.scopedOperationalResponses.iter()].find(r => r.id === retiredResponseId)!;
+      await eventually(() => !!retiredRow(), "Scope test proposal missing");
+      await a.reducers.approveOperationalResponse({ ...meta(), incidentId: caseId, responseId: retiredResponseId, expectedVersion: retiredRow().version, decision: "APPROVE", reason: "Exercise revocation before application dispatch" });
+      await eventually(() => retiredRow().status === "APPROVED", "Scope test approval missing");
+      const retire = { ...meta(), incidentId: caseId, targetId, expectedVersion: target.version, reason: "Remove application before dispatch" };
+      for (const denied of [b, service, x]) await assert.rejects(denied.reducers.retireOperationalTarget(retire), /FORBIDDEN/);
+      await a.reducers.retireOperationalTarget(retire);
+      await a.reducers.retireOperationalTarget(retire);
+      await eventually(() => ![...a.db.scopedOperationalTargets.iter()].find(t => t.id === targetId)!.active, "Target retirement missing");
+      await assert.rejects(a.reducers.claimOperationalResponse({ ...meta(), incidentId: caseId, responseId: retiredResponseId, expectedVersion: retiredRow().version }), /VERSION_CONFLICT/);
+      const withdrawal = { ...meta(), incidentId: caseId, responseId: retiredResponseId, expectedVersion: retiredRow().version, reason: "Target removed; withdraw unexecuted approval" };
+      for (const denied of [service, x]) await assert.rejects(denied.reducers.withdrawOperationalResponse(withdrawal), /FORBIDDEN/);
+      await b.reducers.withdrawOperationalResponse(withdrawal);
+      await b.reducers.withdrawOperationalResponse(withdrawal);
+      await eventually(() => retiredRow().status === "WITHDRAWN", "Approved response withdrawal missing");
+      await assert.rejects(a.reducers.claimOperationalResponse({ ...meta(), incidentId: caseId, responseId: retiredResponseId, expectedVersion: retiredRow().version }), /FORBIDDEN/);
+      assert.equal(retiredRow().executionId, undefined);
+      const renewedPreview = await previewApplication(caseId);
+      target = [...a.db.scopedOperationalTargets.iter()].find(t => t.id === targetId)!;
+      await a.reducers.registerOperationalTarget({ ...registration, ...meta(), expectedVersion: target.version, ...signedResponse(renewedPreview.preview, renewedPreview.connector.signingKey), reason: "Explicit fresh review to restore application scope" });
+      await eventually(() => [...a.db.scopedOperationalTargets.iter()].find(t => t.id === targetId)!.active, "Reviewed target reactivation missing");
+      target = [...a.db.scopedOperationalTargets.iter()].find(t => t.id === targetId)!;
+      const pendingId = await propose("DISABLE_APPLICATION_LOGIN");
+      await eventually(() => [...a.db.scopedOperationalResponses.iter()].some(r => r.id === pendingId), "Pending withdrawal test missing");
+      await a.reducers.withdrawOperationalResponse({ ...meta(), incidentId: caseId, responseId: pendingId, expectedVersion: 1, reason: "Commander withdraws pending proposal" });
+      await eventually(() => [...a.db.scopedOperationalResponses.iter()].some(r => r.id === pendingId && r.status === "WITHDRAWN"), "Pending withdrawal missing");
+      assert.equal((await previewApplication(caseId)).preview.observation.version, recovered.result.observation!.version, "Scope withdrawal caused an application effect");
+      const report = meta(), reportId = await result(a, () => a.reducers.exportReport({ ...report, incidentId: caseId }), report);
+      const exported = JSON.parse([...a.db.scopedReports.iter()].find(r => r.id === reportId)!.summary);
+      assert.equal(exported.operationalTargets.length, 1); assert.equal(exported.operationalResponses.length, 4);
+      assert.equal(exported.operationalResponses.filter((r: { status: string }) => r.status === "VERIFIED_SUCCESS").length, 2);
+      assert.equal(exported.operationalResponses.filter((r: { status: string }) => r.status === "WITHDRAWN").length, 2);
+      assert.equal([...a.db.scopedScenarios.iter()].filter(r => r.incidentId === caseId).length, 0, "Real response wrote simulator state");
+      if (process.env.BREACHBAY_LAB_REPORT_DIR) {
+        const { snapshotFromConnection } = await import("../client");
+        await mkdir(process.env.BREACHBAY_LAB_REPORT_DIR, { recursive: true, mode: 0o700 });
+        await writeFile(`${process.env.BREACHBAY_LAB_REPORT_DIR}/operational-snapshot.json`, JSON.stringify(snapshotFromConnection(a, caseId), null, 2), { mode: 0o600 });
+        await writeFile(`${process.env.BREACHBAY_LAB_REPORT_DIR}/response-checks.json`, JSON.stringify({ checkedAt: new Date().toISOString(), proof: "Real loopback application, genuine captured logs, actual SpacetimeDB; test-only signed actor identities", exactProofRetry: true, stalePreviewDenied: true, retiredTargetDenied: true, approvedWithdrawal: true, pendingWithdrawal: true, executedWithdrawalDenied: true, freshReviewReactivated: true, verifiedEffects: 2, withdrawnResponses: 2 }, null, 2), { mode: 0o600 });
+      }
+      console.log("PASS actual SQLite application effects, separate-account scoped approval, durable idempotent execution, signed independent HTTP verification, AI/outsider denial and real response report");
+    }
+    await a.reducers.approveEvidenceForModel({ ...approval, ...meta(), expectedVersion: e.version + 1, approved: false, reason: "End model access after the verification" });
+    await eventually(() => ![...service.db.scopedEvidence.iter()].some(e => e.id === evidenceId), "Revocation did not retract service data");
+    await assert.rejects(a.reducers.approveEvidenceForModel({ ...approval, ...meta() }), /VERSION_CONFLICT/);
+    for (const c of clients) c.disconnect();
+    await new Promise<void>((resolve, reject) => validation.close(err => err ? reject(err) : resolve()));
+    console.log("PASS actual captured logs, empty operational creation, atomic ingest, scoped live updates, no invented health, integrity denial, original deduplication and human-only model approval/revocation");
+    return;
   }
   const create = meta();
   const createArgs={...create,title:"Synthetic security integration",description:"Loopback test fixture",severity:"CRITICAL",classification:"SYNTHETIC",scenarioId:"credential-compromise"};
@@ -916,7 +1105,11 @@ async function main() {
   );
   console.log("REAL BACKEND SECURITY SMOKE PASSED");
 }
-main().catch((error) => {
+main().catch(async (error) => {
+  if (process.env.BREACHBAY_LAB_REPORT_DIR) {
+    await mkdir(process.env.BREACHBAY_LAB_REPORT_DIR, { recursive: true, mode: 0o700 });
+    await writeFile(`${process.env.BREACHBAY_LAB_REPORT_DIR}/failure.json`, JSON.stringify(error, Object.getOwnPropertyNames(error ?? {}), 2), { mode: 0o600 });
+  }
   console.error(
     error instanceof Error ? error.message : "Backend integration failed",
   );

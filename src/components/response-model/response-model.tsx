@@ -17,10 +17,11 @@ export interface ResponseModelProps {
   running?: boolean;
   className?: string;
   title?: string;
+  evidenceOnly?: boolean;
 }
 
 /** Canvas is a spatial enhancement. The complete scoped node/link record stays in HTML. */
-export function ResponseModel({ nodes, links, variant = "showcase", activeId, onSelect, instant = false, running, className = "", title = "Response model" }: ResponseModelProps) {
+export function ResponseModel({ nodes, links, variant = "showcase", activeId, onSelect, instant = false, running, className = "", title = "Response model", evidenceOnly = false }: ResponseModelProps) {
   const id = useId();
   const stage = useRef<HTMLDivElement>(null);
   const labelLayer = useRef<HTMLDivElement>(null);
@@ -115,7 +116,7 @@ export function ResponseModel({ nodes, links, variant = "showcase", activeId, on
     if(event.key==="Escape") setTouchControls(false);
   };
   return <section className={`bb-response-model bb-model-${variant} ${className}`} aria-labelledby={`${id}-title`} data-ready={ready} data-motion={moving} data-webgl={unavailable ? "unavailable" : "available"}>
-    <header className="bb-model-heading"><div><span className="bb-model-caption">Spatial response twin</span><h3 id={`${id}-title`}>{title}</h3></div><span className="bb-model-badge">3D model</span></header>
+    <header className="bb-model-heading"><div><span className="bb-model-caption">{evidenceOnly ? "Spatial evidence map" : "Spatial response twin"}</span><h3 id={`${id}-title`}>{title}</h3></div><span className="bb-model-badge">3D model</span></header>
     <div className="bb-model-stage" ref={stage} tabIndex={ready ? 0 : -1} role="group" aria-label="Response twin camera" aria-describedby={`${id}-camera-help`} onKeyDown={keyCamera} data-touch-controls={touchControls}>
       <div className="bb-model-floor" aria-hidden="true" />
       <div className="bb-model-labels" ref={labelLayer} aria-label="Model assets">
@@ -127,7 +128,7 @@ export function ResponseModel({ nodes, links, variant = "showcase", activeId, on
       <div className="bb-model-corner" aria-hidden="true"><span />B / B<span /></div>
     </div>
     <div className="bb-model-controls">
-      <span className="bb-model-explainer">{variant === "showcase" ? "Illustrative synthetic paths" : "Scoped scenario relationships"}</span>
+      <span className="bb-model-explainer">{evidenceOnly ? "Historical observations and reviewed relationships" : variant === "showcase" ? "Illustrative synthetic paths" : "Scoped scenario relationships"}</span>
       <div className="bb-camera-toolbar" role="group" aria-label="Response twin view controls">
         <div className="bb-camera-zoom" role="group" aria-label="Zoom controls">
           <button type="button" disabled={!ready || zoom<=.75} onClick={event=>scene.current?.zoomBy(1/1.2,event.detail===0)} aria-label="Zoom model out">−</button>
@@ -146,6 +147,6 @@ export function ResponseModel({ nodes, links, variant = "showcase", activeId, on
     </div>
     <p className="bb-model-camera-help" id={`${id}-camera-help`}>{touchControls ? "Touch controls enabled: drag to pan; pinch with two fingers to zoom. Exit touch controls to scroll the page." : "Drag to rotate; Shift-drag to pan. Ctrl/⌘ + wheel zooms. Focus the camera and use arrows to pan, +/− to zoom, [/] to rotate, and Home to reset."}</p>
     <p className="bb-model-footnote">{unavailable ? "3D rendering is unavailable. The complete model remains accessible below." : "Select an asset to inspect it. Offscreen assets remain in Focus asset and the full record below. Signal motion shows relationship direction, not measured traffic."}</p>
-    <details className="bb-model-record"><summary>Read assets and relationships</summary><ul>{nodes.map(node => <li key={node.id}><button type="button" onClick={event => choose(node,event.detail===0)}>{node.label}</button><span>{node.kind ? displayLabel(node.kind) : "Asset"}{node.state ? ` · ${displayLabel(node.state)}` : ""}</span></li>)}</ul><ul>{links.map(link => <li key={link.id}><span>{nodes.find(node => node.id === link.from)?.label ?? "Source unavailable"} → {nodes.find(node => node.id === link.to)?.label ?? "Target unavailable"}</span><span>{link.label ? `${displayLabel(link.label)} · ` : ""}{link.enabled === false ? "Disabled" : "Enabled"}{link.verified === undefined ? "" : link.verified ? " · Evidence supported" : " · Hypothesis"}</span></li>)}</ul>{!nodes.length && <p>No assets available in this scope.</p>}</details>
+    <details className="bb-model-record"><summary>Read assets and relationships</summary><ul>{nodes.map(node => <li key={node.id}><button type="button" onClick={event => choose(node,event.detail===0)}>{node.label}</button><span>{node.kind ? displayLabel(node.kind) : "Asset"}{node.state ? ` · ${displayLabel(node.state)}` : ""}</span></li>)}</ul><ul>{links.map(link => <li key={link.id}><span>{nodes.find(node => node.id === link.from)?.label ?? "Source unavailable"} → {nodes.find(node => node.id === link.to)?.label ?? "Target unavailable"}</span><span>{link.label ? `${displayLabel(link.label)} · ` : ""}{evidenceOnly ? "Recorded relationship" : link.enabled === false ? "Disabled" : "Enabled"}{link.verified === undefined ? "" : link.verified ? " · Evidence supported" : " · Hypothesis"}</span></li>)}</ul>{!nodes.length && <p>No assets available in this scope.</p>}{evidenceOnly && <p>Relationship records do not establish current network reachability.</p>}</details>
   </section>;
 }

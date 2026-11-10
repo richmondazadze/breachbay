@@ -21,6 +21,7 @@ export type Capability =
   | "SIMULATE"
   | "APPROVE"
   | "EXECUTE_SIMULATION"
+  | "EXECUTE_RESPONSE"
   | "COLLABORATE"
   | "RESTORE_SIMULATION"
   | "EXPORT";
@@ -114,7 +115,7 @@ export interface Asset {
   type: "HOST" | "SERVICE" | "DATABASE" | "GATEWAY" | "IDENTITY";
   owner: string;
   criticality: Severity;
-  state: "HEALTHY" | "COMPROMISED" | "ISOLATED" | "DEGRADED" | "OFFLINE";
+  state: "UNKNOWN" | "HEALTHY" | "COMPROMISED" | "ISOLATED" | "DEGRADED" | "OFFLINE";
   version: number;
   lastSeen: ISODateTime;
   riskLabels: string[];
@@ -461,6 +462,8 @@ export interface AssignTaskCommand extends CommandMeta {
   expectedVersion?: number;
 }
 export interface IncidentSnapshot {
+  operationalTargets?: import("./response/contract").OperationalTarget[];
+  operationalResponses?: import("./response/contract").OperationalResponse[];
   incident: Incident;
   retentionPolicy?: IncidentRetentionPolicy;
   memberships: Membership[];

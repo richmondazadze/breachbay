@@ -11,7 +11,7 @@ import "./brand-fonts.css";
 import "@/components/premium-workspace.css";
 export const metadata: Metadata = {
   title: "BreachBay | Incident command",
-  description: "Investigate simulated cyber incidents together, compare response tradeoffs, and decide with evidence. AI investigates. Humans stay in control.",
+  description: "Investigate source logs together, review cited AI findings, and verify approved application responses. AI investigates. Humans stay in control.",
   openGraph: {
     title: "BreachBay — Investigate the breach. Decide with evidence.",
     description: "A shared incident workspace with cited AI investigations, response previews and human approval.",

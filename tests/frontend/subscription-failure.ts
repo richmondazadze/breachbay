@@ -11,5 +11,7 @@ test("the initial CSP failure retains a safe diagnosis and requests an app reloa
 test("unknown SDK errors cannot expose connection arguments through the UI", () => {
   const message = subscriptionFailureMessage(new Error("configured endpoint https://example.invalid/?token=synthetic"));
   assert.doesNotMatch(message, /example|token|https/);
+  assert.match(message, /retry automatically/);
+  assert.doesNotMatch(message, /Sign in again/i);
   assert.equal(subscriptionFailureMessage(new Error("Sign in again to restore your session.")), "Sign in again to restore your session.");
 });

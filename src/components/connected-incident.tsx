@@ -1,5 +1,8 @@
 "use client";
+import { BrandArtwork } from "./brand-artwork";
 import { EvidenceUpload, ProtectedDownloadControl } from "./evidence-transfers";
+import { ModelEvidenceReview } from "./operational-evidence";
+import { OperationalResponses } from "./operational-response";
 import { AuthenticationRecovery } from "./auth/authentication-recovery";
 import { ResponsePlanning } from "./response-planning";
 import { GraphRelationshipReview } from "./graph-relationship-review";
@@ -10,6 +13,7 @@ import { IncidentTimeline } from "./incident-timeline";
 import { IncidentDetails } from "./incident-details";
 import { IncidentRetention } from "./incident-retention";
 import { sortAuditEvents } from "@/hooks/audit-presentation";
+import { newestApplicationResponses } from "@/hooks/application-effect-presentation";
 import { ScenarioHistory, CancelInvestigation } from "./scenario-history";
 import { DetailedTwin, type TwinView } from "./detailed-twin";
 import { IncidentLifecycle, ManualProposal, FindingReview, EvidenceRelationship, AcknowledgeControl } from "./incident-operations";
@@ -133,14 +137,14 @@ export function ConnectedIncident({
     );
   const nodes: Node[] = s.assets.map((a, i) => ({
     id: a.id,
-    ariaLabel: `${a.name} · ${displayLabel(a.type)} · ${displayLabel(a.state)} · ${displayLabel(a.criticality)} criticality`,
+    ariaLabel: `${a.name} · ${displayLabel(a.type)} · ${displayLabel(a.state)} · ${a.riskLabels.includes("CRITICALITY_UNREVIEWED") ? "Importance unreviewed" : displayLabel(a.criticality) + " criticality"}`,
     position: { x: (i % 3) * 230, y: Math.floor(i / 3) * 150 },
     data: {
       label: (
         <div className="graph-node">
           <strong>{a.name}</strong>
           <small>
-            {displayLabel(a.type)} · {displayLabel(a.criticality)}
+            {displayLabel(a.type)} · {a.riskLabels.includes("CRITICALITY_UNREVIEWED") ? "Unreviewed importance" : displayLabel(a.criticality)}
           </small>
           <span>{displayLabel(a.state)}</span>
         </div>
@@ -171,6 +175,9 @@ export function ConnectedIncident({
   ].map((n,i)=>({id:n.id,position:{x:(i%3)*230,y:(Math.ceil(s.assets.length/3)+Math.floor(i/3))*150},ariaLabel:`${n.kind} · ${n.name}`,data:{label:<div className="graph-node"><strong>{n.name}</strong><small>{n.kind}</small></div>},style:{width:180}}));
   const latestInvestigation = [...s.investigations].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.id.localeCompare(b.id)).at(-1);
   const latestSimulation = [...s.simulations].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.id.localeCompare(b.id)).at(-1);
+  const applicationResponses = newestApplicationResponses(s.operationalResponses ?? []);
+  const pendingApplicationResponse = applicationResponses.find(r => ["PENDING_APPROVAL", "APPROVED", "EXECUTING", "UNCONFIRMED"].includes(r.status));
+  const latestApplicationResponse = pendingApplicationResponse ?? applicationResponses[0];
   const isHistorical = (proposal: Proposal) => ["REJECTED","VERIFIED_SUCCESS","VERIFIED_PARTIAL","VERIFIED_FAILED"].includes(proposal.status);
   const proposals = [...s.proposals].sort((a,b)=>Date.parse(b.updatedAt)-Date.parse(a.updatedAt) || a.id.localeCompare(b.id));
   const currentProposals = proposals.filter(p=>!isHistorical(p));
@@ -195,10 +202,14 @@ export function ConnectedIncident({
       {tab === "overview" && (
         <>
           <OperationalOverview
+            synthetic={s.incident.classification === "SYNTHETIC"}
+            operational={s.incident.scenarioId === "evidence-driven"}
+            applicationDecisionPending={!!pendingApplicationResponse}
             nodes={nodes}
             edges={edges}
             containmentCoverage={latestSimulation?.diff.containmentCoverage}
             containmentVersion={latestSimulation?.parentVersion}
+            verifiedApplicationResponses={s.operationalResponses?.filter(r => r.status === "VERIFIED_SUCCESS").length}
             assets={s.assets.map((a) => ({
               id: a.id,
               name: a.name,
@@ -218,7 +229,14 @@ export function ConnectedIncident({
             onNavigate={(t) => setTab(t === "twin" ? "graph" : t)}
             decisions={
               <div className="decision-body compact-decision">
-                {overviewProposal ? <div>
+                {s.incident.scenarioId === "evidence-driven" ? <div>
+                  {latestApplicationResponse ? <>
+                    <span className="state-chip" data-status={latestApplicationResponse.status}>{displayLabel(latestApplicationResponse.status)}</span>
+                    <h2>{latestApplicationResponse.operation === "DISABLE_APPLICATION_LOGIN" ? "Disable application access" : "Restore application login"}</h2>
+                    {pendingApplicationResponse ? <p>{latestApplicationResponse.rationale}</p> : <><p className="small muted">Latest recorded response · <time dateTime={latestApplicationResponse.updatedAt}>{new Date(latestApplicationResponse.updatedAt).toLocaleString()}</time></p><details><summary>Read the proposal</summary><p>{latestApplicationResponse.rationale}</p></details></>}
+                  </> : <p>No application response requested. Begin with the source logs and a reviewed target.</p>}
+                  <Button variant="outline" onClick={() => setTab("responses")}>Review application responses →</Button>
+                </div> : overviewProposal ? <div>
                   <span className="state-chip" data-status={overviewProposal.status}>{displayLabel(overviewProposal.status)}</span>
                   {isHistorical(overviewProposal) && <p className="small muted">Latest historical response · no current proposal awaiting action</p>}
                   <h2>{displayLabel(overviewProposal.action.type)}</h2><p>{overviewProposal.rationale}</p>
@@ -242,7 +260,8 @@ export function ConnectedIncident({
           />
         </>
       )}
-      {tab === "responses" && <>
+      {tab === "responses" && s.incident.scenarioId === "evidence-driven" && client && <OperationalResponses key={s.incident.id} snapshot={s} client={client} userId={state.session?.user.id} disabled={disabled} />}
+      {tab === "responses" && s.incident.scenarioId !== "evidence-driven" && <>
         <div className="bb-section-heading"><h2>Response decisions</h2><p>Preview service impact, request separate human approval, then verify synthetic execution.</p></div>
           {client && <ManualProposal snapshot={s} client={client} disabled={disabled} canPropose={state.capabilities.includes("PROPOSE") && s.memberships.some(m=>m.active && m.userId===state.session?.user.id && m.role!=="AI_SERVICE")} command={state.command} />}
           <div id="approval-review" className="bb-responses-layout approval-review">
@@ -369,36 +388,37 @@ export function ConnectedIncident({
 
           </div>
         </>}
-      {client && (tab === "graph" || tab === "reports") && <ScenarioHistory snapshot={s} client={client} disabled={disabled} canRead={state.capabilities.includes("SIMULATE") && s.memberships.some(m=>m.active && m.userId===state.session?.user.id && m.role!=="AI_SERVICE")} canRestore={state.capabilities.includes("RESTORE_SIMULATION")} command={state.command} />}
+      {client && s.incident.scenarioId !== "evidence-driven" && (tab === "graph" || tab === "reports") && <ScenarioHistory snapshot={s} client={client} disabled={disabled} canRead={state.capabilities.includes("SIMULATE") && s.memberships.some(m=>m.active && m.userId===state.session?.user.id && m.role!=="AI_SERVICE")} canRestore={state.capabilities.includes("RESTORE_SIMULATION")} command={state.command} />}
       {tab === "graph" && (
         <section className="panel">
           <DetailedTwin nodes={[...nodes,...relatedNodes]} edges={edges} view={twinView} setView={setTwinView} onInspect={setSelected} />
           <div className="panel-foot">
-            Dashed edges are unverified. Scenario version{" "}
-            {s.incident.scenarioVersion}.
+            Dashed edges are unverified. {s.incident.scenarioId === "evidence-driven" ? "Evidence model" : "Scenario"} version{" "}
+            {s.incident.scenarioId === "evidence-driven" ? s.incident.version : s.incident.scenarioVersion}.
           </div>
         </section>
       )}
       {client && (tab === "evidence" || tab === "graph") && <EvidenceRelationship snapshot={s} client={client} disabled={disabled} canAttach={state.capabilities.includes("ATTACH_EVIDENCE")} command={state.command} />}
       {client && (tab === "evidence" || tab === "graph") && <GraphRelationshipReview snapshot={s} client={client} userId={state.session?.user.id} canManage={state.capabilities.includes("MANAGE_INCIDENT")} disabled={disabled} command={state.command} onInspect={setSelected} />}
-      {client && <EvidenceUpload attempt={uploadAttempt} incidentId={incidentId} client={client} hidden={tab !== "evidence"} disabled={disabled || !state.capabilities.includes("ATTACH_EVIDENCE")} command={state.command} />}
+      {client && <EvidenceUpload attempt={uploadAttempt} incidentId={incidentId} classification={s.incident.classification} client={client} hidden={tab !== "evidence"} disabled={disabled || !state.capabilities.includes("ATTACH_EVIDENCE")} command={state.command} />}
       {tab === "evidence" && (
         <section className="panel">
           <div className="asset-list">
             <div className="workflow-row"><label className="field-label">Filter evidence<input value={evidenceQuery} onChange={e=>setEvidenceQuery(e.target.value)} /></label><label className="field-label">Timeline order<select value={evidenceOrder} onChange={e=>setEvidenceOrder(e.target.value)}><option value="captured">Capture time</option><option value="attached">Attachment time</option></select></label></div>
             {s.evidence.filter(e=>`${e.title} ${e.source}`.toLowerCase().includes(evidenceQuery.toLowerCase())).sort((a,b)=>(evidenceOrder==="captured"?b.capturedAt:b.createdAt).localeCompare(evidenceOrder==="captured"?a.capturedAt:a.createdAt)).map((e) => (
-              <button key={e.id} onClick={() => setSelected(e.id)}>
+              <div className="bb-log-evidence-row" key={e.id}><button onClick={() => setSelected(e.id)}>
                 {e.title} · {e.classification} · {e.source}<small>Captured {e.capturedAt} · attached {e.createdAt}</small>
               </button>
+              {client && <ModelEvidenceReview evidence={e} client={client} disabled={disabled} canReview={state.capabilities.includes("MANAGE_INCIDENT")} command={state.command} />}</div>
             ))}
           </div>
-          {!s.evidence.length && <p className="empty">No evidence attached.</p>}
+          {!s.evidence.length && <div className="bb-artwork-empty"><BrandArtwork name="evidence-intake" sizes="136px" /><div><h3>Start with the source</h3><p>Import a log above to build the incident’s evidence record. Review the derivative before allowing model access.</p></div></div>}
         </section>
       )}
       {tab === "investigation" && (
         <section className="panel decision-body">
-          <h2>Investigation</h2><p className="bb-section-description">Set a bounded objective. Follow cited findings and server-recorded progress.</p>
-          {!["INVESTIGATING", "CONTAINMENT_PENDING", "CONTAINING"].includes(s.incident.status) && (
+          <div className="bb-investigation-intro"><div><h2>Investigation</h2><p className="bb-section-description">Set a bounded objective. Follow cited findings and server-recorded progress.</p></div>{!s.investigations.length && !state.investigationPending && <BrandArtwork name="investigation" sizes="104px" />}</div>
+          {s.incident.scenarioId !== "evidence-driven" && !["INVESTIGATING", "CONTAINMENT_PENDING", "CONTAINING"].includes(s.incident.status) && (
             <p className="impact-warning">
               Response proposals require INVESTIGATING, CONTAINMENT_PENDING or CONTAINING.
               Ask a commander to advance through Incident lifecycle to INVESTIGATING before requesting proposals.
@@ -542,8 +562,8 @@ export function ConnectedIncident({
         <div className="bb-section-heading"><h2>Reports & preservation</h2><p>Export the server-generated record, inspect chronology and review preservation settings.</p></div>
         <section className="panel decision-body"><h3>Incident report</h3><p>Protected exports include recorded evidence, investigation, decisions and verification.</p>{client && <ProtectedDownloadControl client={client} incidentId={incidentId} reportAttempt={reportAttempt} disabled={disabled || !state.capabilities.includes("EXPORT")} />}
         {s.reports.length ? <div className="bb-report-list">{s.reports.map(report=><button className="button button-outline" key={report.id} onClick={()=>setSelected(report.id)}>Report version {report.version} · {new Date(report.createdAt).toLocaleString()}</button>)}</div> : <p className="small muted">No saved report versions recorded.</p>}</section>
-        {client && <IncidentRetention key={incidentId} snapshot={s} userId={state.session?.user.id} client={client} disabled={disabled} command={state.command} />}
-        <IncidentTimeline key={incidentId} snapshot={s} onInspect={setSelected} />
+        {client && <IncidentRetention key={`retention:${incidentId}`} snapshot={s} userId={state.session?.user.id} client={client} disabled={disabled} command={state.command} />}
+        <IncidentTimeline key={`timeline:${incidentId}`} snapshot={s} onInspect={setSelected} />
       </section>
       <AnimatePresence>
         {tab === "collaboration" && client && (

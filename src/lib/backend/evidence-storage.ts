@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, readFile, link, unlink } from "node:fs/promises";
-import { isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { sanitizeFreeText } from "../ai/evidence";
 export const MAX_EVIDENCE_BYTES = 256 * 1024;
 export function digestBytes(bytes: Uint8Array) { return createHash("sha256").update(bytes).digest("hex"); }
@@ -26,7 +26,7 @@ export function validateSyntheticUpload(bytes: Uint8Array, mime: string) {
 function objectPath(root: string, incidentId: string, digest: string) {
   if (!isAbsolute(root) || !/^[a-f0-9]{64}$/.test(digest)) throw new Error("Invalid private storage configuration");
   const absolute = resolve(root);
-  const project = resolve(process.cwd());
+  const project = resolve(/* turbopackIgnore: true */ process.cwd());
   if (absolute === project || absolute.startsWith(project + "/")) throw new Error("Evidence storage must be outside application tree");
   return join(absolute, digestBytes(Buffer.from(incidentId)), digest);
 }
@@ -34,7 +34,7 @@ function objectPath(root: string, incidentId: string, digest: string) {
 export async function storeOriginal(root: string, incidentId: string, bytes: Uint8Array) {
   const digest = digestBytes(bytes);
   const path = objectPath(root, incidentId, digest);
-  await mkdir(join(path, ".."), { recursive: true, mode: 0o700 });
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   const temporary = `${path}.${randomUUID()}.tmp`;
   const file = await open(temporary, "wx", 0o600);
   try {
@@ -43,11 +43,11 @@ export async function storeOriginal(root: string, incidentId: string, bytes: Uin
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     }
   } finally { await file.close().catch(() => {}); await unlink(temporary).catch(() => {}); }
-  if (digestBytes(await readFile(path)) !== digest) throw new Error("Stored original integrity mismatch");
+  if (digestBytes(await readFile(/* turbopackIgnore: true */ path)) !== digest) throw new Error("Stored original integrity mismatch");
   return digest;
 }
 export async function readOriginal(root: string, incidentId: string, digest: string) {
-  const bytes = await readFile(objectPath(root, incidentId, digest));
+  const bytes = await readFile(/* turbopackIgnore: true */ objectPath(root, incidentId, digest));
   if (digestBytes(bytes) !== digest) throw new Error("Stored original integrity mismatch");
   return bytes;
 }

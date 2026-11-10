@@ -1,4 +1,4 @@
-import { canonicalPlanning, boundedNextQueries } from "./planning";
+import { canonicalPlanning, canonicalObservationPlanning, boundedNextQueries } from "./planning";
 import { restoreScenario as previewRestore } from "../../src/lib/simulation/restore";
 import { evidenceIndex, actionIndex, findingIndex, findingReviews, reportUnknowns, planningIndex } from "./report-index";
 import { defaultRetentionPolicy, validateRetentionSettings } from "./retention";
@@ -17,7 +17,10 @@ import {
 import { ScheduleAt } from "spacetimedb";
 import db, * as tables from "./schema";
 import { canonical, sha256 } from "./hash";
+import { verifyResponseProof } from "./response-proof";
+import type { ResponsePreview, ResponseResult } from "../../src/lib/response/contract";
 import { credentialCompromiseScenario } from "../../src/lib/simulation/scenario";
+import { logDerivative, observedAssetId, validateObservationBatch } from "../../src/lib/evidence/import-manifest";
 import {
   simulateResponse,
   verifyExecution,
@@ -46,6 +49,7 @@ const grants: Record<string, string[]> = {
     "SIMULATE",
     "APPROVE",
     "EXECUTE_SIMULATION",
+    "EXECUTE_RESPONSE",
     "COLLABORATE",
     "EXPORT",
     "RESTORE_SIMULATION",
@@ -291,7 +295,7 @@ function command<T extends { idempotencyKey: string; correlationId: string }>(
       ? 60
       : name === "startInvestigation"
         ? 5
-        : name === "attachEvidence"
+        : ["attachEvidence", "ingestLogEvidence"].includes(name)
           ? 10
           : 120;
   const count = bucket?.window === window ? bucket.count : 0;
@@ -449,8 +453,9 @@ export const createIncident = db.reducer(
           ["SYNTHETIC", "INTERNAL", "RESTRICTED"],
           "classification",
         );
-        if (args.scenarioId !== "credential-compromise")
-          fail("INVALID_INPUT", "Unknown synthetic scenario");
+        const operational = args.scenarioId === "evidence-driven";
+        if ((!operational && args.scenarioId !== "credential-compromise") || (operational && args.classification === "SYNTHETIC") || (!operational && args.classification !== "SYNTHETIC"))
+          fail("INVALID_INPUT", "Incident mode and classification do not match");
         const id = uid(ctx, "inc");
         const now = iso(ctx);
         ctx.db.incidents.insert({
@@ -480,13 +485,15 @@ export const createIncident = db.reducer(
         ctx.db.tasks.insert({
           id: uid(ctx, "task"),
           incidentId: id,
-          title: "Triage synthetic credential compromise",
+          title: operational ? "Review incident scope and attach source evidence" : "Triage synthetic credential compromise",
           assigneeId: actor.id,
           state: "TODO",
           dueAt: undefined,
           version: 1,
           createdAt: now,
         });
+        // Operational incidents have no invented hosts, observations or response state.
+        if (operational) return id;
         const scenario = credentialCompromiseScenario(id);
         for (const a of scenario.assets) {
           a.id = `${id}:${a.id}`;
@@ -966,6 +973,193 @@ export const attachEvidence = db.reducer(
       },
     ),
 );
+export const ingestLogEvidence = db.reducer(
+  { ...scopedMeta, title: t.string(), source: t.string(), classification: t.string(), sha256: t.string(), redactedSha256: t.string(), redactedContent: t.string(), observationsJson: t.string(), storageRef: t.string() },
+  (ctx, args) => command(ctx, "ingestLogEvidence", args, args.incidentId, "ATTACH_EVIDENCE", actor => {
+    const inc = scoped(ctx.db.incidents.id.find(args.incidentId), args.incidentId, "Incident");
+    if (actor.service || inc.scenarioId !== "evidence-driven" || inc.status === "ARCHIVED") fail("FORBIDDEN", "Active operational incident and human uploader required");
+    oneOf(args.classification, ["INTERNAL", "RESTRICTED"], "classification");
+    if (inc.classification === "RESTRICTED" && args.classification !== "RESTRICTED") fail("INVALID_INPUT", "Evidence cannot lower the incident classification");
+    text(args.title, "title", 200); text(args.source, "source", 300);
+    text(args.observationsJson, "observations", 60000);
+    if (!/^[a-f0-9]{64}$/.test(args.sha256) || args.storageRef !== `private-evidence:${args.sha256}`) fail("INVALID_INPUT", "Invalid original integrity record");
+    let observations: ReturnType<typeof validateObservationBatch>;
+    try { observations = validateObservationBatch(JSON.parse(args.observationsJson)); } catch { fail("INVALID_INPUT", "Invalid observations"); }
+    let derivative: string;
+    try { derivative = logDerivative(args.incidentId, observations); } catch { fail("INVALID_INPUT", "Invalid derivative"); }
+    if (derivative !== args.redactedContent || sha256(derivative) !== args.redactedSha256) fail("INVALID_INPUT", "Derivative integrity mismatch");
+    const id = `ev_${sha256(canonical([args.incidentId, args.sha256]))}`;
+    const previous = ctx.db.evidence.id.find(id);
+    if (previous) {
+      if (previous.redactedSha256 !== args.redactedSha256 || previous.classification !== args.classification || previous.source !== args.source || previous.title !== args.title) fail("IDEMPOTENCY_CONFLICT", "Original already imported with different metadata");
+      return id;
+    }
+    const now = iso(ctx);
+    const seen = new Map<string, string>();
+    for (const o of observations) for (const host of [o.host, o.sourceHost, o.destinationHost]) if (host) {
+      const name = host.toLowerCase();
+      if (!seen.has(name) || Date.parse(seen.get(name)!) < Date.parse(o.timestamp)) seen.set(name, o.timestamp);
+    }
+    if (seen.size > 100) fail("INVALID_INPUT", "Too many host references");
+    const assetIds = [...seen.keys()].map(host => observedAssetId(args.incidentId, host));
+    ctx.db.evidence.insert({ id, incidentId: args.incidentId, kind: "LOG", title: args.title, source: args.source, classification: args.classification, sha256: args.sha256, redactedSha256: args.redactedSha256, redactedContent: derivative, capturedAt: new Date(Math.min(...observations.map(o => Date.parse(o.timestamp)))).toISOString(), createdAt: now, modelApproved: false, assetIds, version: 1 });
+    ctx.db.evidenceStorage.insert({ id, incidentId: args.incidentId, storageRef: args.storageRef });
+    for (const [host, lastSeen] of seen) {
+      const assetId = observedAssetId(args.incidentId, host);
+      const current = ctx.db.assets.id.find(assetId);
+      if (current) {
+        scoped(current, args.incidentId, "Asset");
+        if (Date.parse(lastSeen) > Date.parse(current.lastSeen)) ctx.db.assets.id.update({ ...current, lastSeen, version: current.version + 1 });
+      } else ctx.db.assets.insert({ id: assetId, incidentId: args.incidentId, name: host, type: "HOST", owner: "Unassigned", criticality: "LOW", state: "UNKNOWN", version: 1, lastSeen, riskLabels: ["LOG_OBSERVED", "CRITICALITY_UNREVIEWED"] });
+    }
+    // Historical successful connections support a relationship hypothesis, not current reachability.
+    for (const o of observations) if (o.outcome === "success" && o.sourceHost && o.destinationHost && o.sourceHost.toLowerCase() !== o.destinationHost.toLowerCase()) {
+      const fromId = observedAssetId(args.incidentId, o.sourceHost), toId = observedAssetId(args.incidentId, o.destinationHost);
+      const edgeId = `edge_${sha256(canonical([args.incidentId, fromId, toId, "COMMUNICATES_WITH"]))}`;
+      const edge = ctx.db.graphEdges.id.find(edgeId);
+      if (edge) {
+        scoped(edge, args.incidentId, "Edge");
+        ctx.db.graphEdges.id.update({ ...edge, sourceEvidenceIds: [...new Set([...edge.sourceEvidenceIds, id])] });
+      } else ctx.db.graphEdges.insert({ id: edgeId, incidentId: args.incidentId, fromId, toId, type: "COMMUNICATES_WITH", sourceEvidenceIds: [id], assertedBy: actor.id, confidence: "LOW", verificationStatus: "HYPOTHESIS", createdAt: now, enabled: true, credentialId: undefined });
+    }
+    ctx.db.incidents.id.update({ ...inc, version: inc.version + 1, scenarioVersion: inc.scenarioVersion + 1, updatedAt: now });
+    return id;
+  }),
+);
+
+export const approveEvidenceForModel = db.reducer(
+  { ...scopedMeta, evidenceId: t.string(), expectedVersion: t.u32(), approved: t.bool(), reason: t.string() },
+  (ctx, args) => command(ctx, "approveEvidenceForModel", args, args.incidentId, "MANAGE_INCIDENT", actor => {
+    if (actor.service) fail("FORBIDDEN", "Human evidence review required");
+    const evidence = scoped(ctx.db.evidence.id.find(args.evidenceId), args.incidentId, "Evidence");
+    version(evidence.version, args.expectedVersion); text(args.reason, "review reason");
+    if (evidence.classification === "SYNTHETIC") fail("INVALID_INPUT", "Operational evidence review required");
+    let content: {schema?: string;events?: unknown[]};
+    try { content = JSON.parse(evidence.redactedContent); } catch { fail("INVALID_INPUT", "No validated log derivative"); }
+    if (content.schema !== "breachbay.observations.v1") fail("INVALID_INPUT", "No validated log derivative");
+    try { validateObservationBatch(content.events); } catch { fail("INVALID_INPUT", "Invalid derivative records"); }
+    ctx.db.evidence.id.update({ ...evidence, modelApproved: args.approved, version: evidence.version + 1 });
+    return evidence.id;
+  }, true),
+);
+function operationalProof(ctx: Ctx, json: string, signature: string, incidentId: string) {
+  let proof: Record<string, unknown>;
+  try { proof = verifyResponseProof(json, signature, ctx.env.RESPONSE_SIGNING_KEY); }
+  catch { fail("FORBIDDEN", "Trusted response observation signature required"); }
+  if (proof.incidentId !== incidentId) fail("FORBIDDEN", "Observation incident mismatch");
+  return proof;
+}
+export const retireOperationalTarget = db.reducer({ ...scopedMeta, targetId: t.string(), expectedVersion: t.u32(), reason: t.string() }, (ctx, args) => command(ctx, "retireOperationalTarget", args, args.incidentId, "MANAGE_INCIDENT", actor => {
+  if (actor.service) fail("FORBIDDEN", "Human scope review required");
+  text(args.reason, "scope withdrawal reason", 1000);
+  const target = scoped(ctx.db.operationalTargets.id.find(args.targetId), args.incidentId, "Response target");
+  version(target.version, args.expectedVersion);
+  if (!target.active) fail("INVALID_TRANSITION", "Target already outside response scope");
+  ctx.db.operationalTargets.id.update({ ...target, active: false, version: target.version + 1, reviewedBy: actor.id, reviewedAt: iso(ctx) });
+  return target.id;
+}, true));
+export const withdrawOperationalResponse = db.reducer({ ...scopedMeta, responseId: t.string(), expectedVersion: t.u32(), reason: t.string() }, (ctx, args) => command(ctx, "withdrawOperationalResponse", args, args.incidentId, "PROPOSE", actor => {
+  const row = scoped(ctx.db.operationalResponses.id.find(args.responseId), args.incidentId, "Response");
+  const membership = [...ctx.db.incidentMembers.byUserIncident.filter([actor.id, args.incidentId])].find(m => m.active);
+  if (actor.service || (actor.id !== row.requestedBy && !grants[membership?.role ?? ""]?.includes("APPROVE"))) fail("FORBIDDEN", "Requester or commander required");
+  text(args.reason, "withdrawal reason", 1500); version(row.version, args.expectedVersion);
+  if (row.executionId || !["PENDING_APPROVAL", "APPROVED"].includes(row.status)) fail("INVALID_TRANSITION", "Only unexecuted responses can be withdrawn");
+  ctx.db.operationalResponses.id.update({ ...row, status: "WITHDRAWN", version: row.version + 1, updatedAt: iso(ctx) });
+  return row.id;
+}, true));
+function recentObservation(ctx: Ctx, time: string) {
+  const elapsed = seconds(ctx) * 1000 - Date.parse(time);
+  if (!Number.isFinite(elapsed) || elapsed < -5000 || elapsed > 120000) fail("VERSION_CONFLICT", "Refresh the application observation");
+}
+function previewProof(ctx: Ctx, args: { proofJson: string; signature: string; incidentId: string }): ResponsePreview {
+  const p = operationalProof(ctx, args.proofJson, args.signature, args.incidentId) as unknown as ResponsePreview;
+  if (p.kind !== "PREVIEW" || !p.observation || !/^[a-f0-9]{48}$/.test(p.observation.instanceId) || !Number.isInteger(p.observation.version) || p.observation.version < 1 || typeof p.observation.loginEnabled !== "boolean" || typeof p.connectorId !== "string" || typeof p.assetId !== "string" || typeof p.impact !== "string" || typeof p.limitation !== "string") fail("INVALID_INPUT", "Invalid application observation");
+  recentObservation(ctx, p.observation.observedAt);
+  return p;
+}
+function realEvidence(ctx: Ctx, incidentId: string, ids: string[]) {
+  if (!ids.length || ids.length > 10 || new Set(ids).size !== ids.length) fail("INVALID_INPUT", "Scoped source evidence required");
+  return ids.map(id => { const e = scoped(ctx.db.evidence.id.find(id), incidentId, "Evidence"); if (e.classification === "SYNTHETIC") fail("INVALID_INPUT", "Operational evidence required"); return { id: e.id, version: e.version, sha256: e.redactedSha256 }; });
+}
+function responseDigest(ctx: Ctx, response: { incidentId: string; targetId: string; operation: string; expectedTargetVersion: number; expectedStateVersion: number; instanceId: string; previewJson: string; evidenceIds: string[]; rationale: string }) {
+  return sha256(canonical({ incidentId: response.incidentId, targetId: response.targetId, operation: response.operation, targetVersion: response.expectedTargetVersion, stateVersion: response.expectedStateVersion, instanceId: response.instanceId, previewDigest: sha256(response.previewJson), evidence: realEvidence(ctx, response.incidentId, response.evidenceIds), rationale: response.rationale }));
+}
+export const registerOperationalTarget = db.reducer({ ...scopedMeta, proofJson: t.string(), signature: t.string(), name: t.string(), owner: t.string(), criticality: t.string(), expectedVersion: t.u32(), reason: t.string() }, (ctx, args) => command(ctx, "registerOperationalTarget", args, args.incidentId, "MANAGE_INCIDENT", actor => {
+  const inc = ctx.db.incidents.id.find(args.incidentId)!;
+  if (actor.service || inc.scenarioId !== "evidence-driven" || ["RESOLVED", "ARCHIVED"].includes(inc.status)) fail("FORBIDDEN", "Active operational incident required");
+  text(args.name, "target name", 100); text(args.owner, "owner", 100); text(args.reason, "scope review", 1000); oneOf(args.criticality, ["LOW", "MEDIUM", "HIGH", "CRITICAL"], "criticality");
+  const p = previewProof(ctx, args);
+  const asset = scoped(ctx.db.assets.id.find(p.assetId), args.incidentId, "Observed asset");
+  if (![...ctx.db.evidence.incidentId.filter(args.incidentId)].some(e => e.classification !== "SYNTHETIC" && e.assetIds.includes(asset.id))) fail("NOT_FOUND", "Attach actual producing-system logs before reviewing this target");
+  const id = `target_${sha256(canonical([args.incidentId, p.connectorId]))}`;
+  const old = ctx.db.operationalTargets.id.find(id); version(old?.version ?? 0, args.expectedVersion);
+  const row = { id, incidentId: args.incidentId, connectorId: p.connectorId, assetId: asset.id, name: args.name, owner: args.owner, criticality: args.criticality, active: true, version: (old?.version ?? 0) + 1, instanceId: p.observation.instanceId, reviewedBy: actor.id, reviewedAt: iso(ctx) };
+  if (old) ctx.db.operationalTargets.id.update(row); else ctx.db.operationalTargets.insert(row);
+  ctx.db.assets.id.update({ ...asset, owner: args.owner, criticality: args.criticality, version: asset.version + 1, riskLabels: [...new Set([...asset.riskLabels.filter(x => x !== "CRITICALITY_UNREVIEWED"), "SCOPE_REVIEWED"])] });
+  return id;
+}, true));
+export const proposeOperationalResponse = db.reducer({ ...scopedMeta, targetId: t.string(), operation: t.string(), expectedTargetVersion: t.u32(), proofJson: t.string(), signature: t.string(), evidenceIds: t.array(t.string()), rationale: t.string() }, (ctx, args) => command(ctx, "proposeOperationalResponse", args, args.incidentId, "PROPOSE", actor => {
+  const inc = ctx.db.incidents.id.find(args.incidentId)!;
+  if (actor.service || inc.scenarioId !== "evidence-driven" || ["RESOLVED", "ARCHIVED"].includes(inc.status)) fail("FORBIDDEN", "Human operational proposal required");
+  oneOf(args.operation, ["DISABLE_APPLICATION_LOGIN", "ENABLE_APPLICATION_LOGIN"], "operation"); text(args.rationale, "rationale", 1500);
+  const target = scoped(ctx.db.operationalTargets.id.find(args.targetId), args.incidentId, "Response target");
+  if (!target.active) fail("FORBIDDEN", "Target is not in response scope"); version(target.version, args.expectedTargetVersion);
+  const p = previewProof(ctx, args);
+  if (p.connectorId !== target.connectorId || p.assetId !== target.assetId || p.observation.instanceId !== target.instanceId) fail("VERSION_CONFLICT", "Reviewed target instance changed");
+  if (p.observation.loginEnabled === (args.operation === "ENABLE_APPLICATION_LOGIN")) fail("INVALID_TRANSITION", "Requested access state already observed; refresh or choose another response");
+  realEvidence(ctx, args.incidentId, args.evidenceIds);
+  if (!args.evidenceIds.some(id => ctx.db.evidence.id.find(id)!.assetIds.includes(target.assetId))) fail("INVALID_INPUT", "Proposal must cite target source evidence");
+  const id = uid(ctx, "response"), now = iso(ctx);
+  const row = { id, incidentId: args.incidentId, targetId: target.id, operation: args.operation, expectedTargetVersion: target.version, expectedStateVersion: p.observation.version, instanceId: target.instanceId, previewJson: args.proofJson, evidenceIds: args.evidenceIds, rationale: args.rationale, requestedBy: actor.id, status: "PENDING_APPROVAL", version: 1, approvalBy: undefined, approvalReason: undefined, approvalExpiresAt: undefined, executionId: undefined, executionBy: undefined, resultJson: undefined, createdAt: now, updatedAt: now };
+  ctx.db.operationalResponses.insert({ ...row, payloadDigest: responseDigest(ctx, row) });
+  return id;
+}));
+export const approveOperationalResponse = db.reducer({ ...scopedMeta, responseId: t.string(), expectedVersion: t.u32(), decision: t.string(), reason: t.string() }, (ctx, args) => command(ctx, "approveOperationalResponse", args, args.incidentId, "APPROVE", actor => {
+  const row = scoped(ctx.db.operationalResponses.id.find(args.responseId), args.incidentId, "Response");
+  if (actor.service || (args.decision === "APPROVE" && actor.id === row.requestedBy)) fail("FORBIDDEN", "A separate human commander must approve");
+  oneOf(args.decision, ["APPROVE", "REJECT"], "decision"); text(args.reason, "review reason", 1500); version(row.version, args.expectedVersion);
+  if (row.status !== "PENDING_APPROVAL") fail("INVALID_TRANSITION", "Pending response required");
+  const target = scoped(ctx.db.operationalTargets.id.find(row.targetId), args.incidentId, "Response target");
+  version(target.version, row.expectedTargetVersion);
+  if (!target.active || row.payloadDigest !== responseDigest(ctx, row)) fail("VERSION_CONFLICT", "Evidence or target changed; prepare a new preview");
+  ctx.db.operationalResponses.id.update({ ...row, status: args.decision === "APPROVE" ? "APPROVED" : "REJECTED", approvalBy: actor.id, approvalReason: args.reason, approvalExpiresAt: new Date(seconds(ctx) * 1000 + 900000).toISOString(), version: row.version + 1, updatedAt: iso(ctx) });
+  return row.id;
+}, true));
+export const claimOperationalResponse = db.reducer({ ...scopedMeta, responseId: t.string(), expectedVersion: t.u32() }, (ctx, args) => command(ctx, "claimOperationalResponse", args, args.incidentId, "EXECUTE_RESPONSE", actor => {
+  const row = scoped(ctx.db.operationalResponses.id.find(args.responseId), args.incidentId, "Response");
+  if (actor.service) fail("FORBIDDEN", "Human execution authorization required");
+  if (["VERIFIED_SUCCESS", "VERIFIED_FAILED"].includes(row.status)) return row.id;
+  if (["EXECUTING", "UNCONFIRMED"].includes(row.status) && row.executionId) return row.id;
+  version(row.version, args.expectedVersion);
+  if (row.status !== "APPROVED" || !row.approvalBy || row.approvalBy === row.requestedBy || Date.parse(row.approvalExpiresAt ?? "") <= seconds(ctx) * 1000) fail("FORBIDDEN", "Unexpired separate approval required");
+  const approver = ctx.db.users.id.find(row.approvalBy);
+  const approverMember = [...ctx.db.incidentMembers.byUserIncident.filter([row.approvalBy, args.incidentId])].find(m => m.active);
+  const requester = ctx.db.users.id.find(row.requestedBy);
+  const requesterMember = [...ctx.db.incidentMembers.byUserIncident.filter([row.requestedBy, args.incidentId])].find(m => m.active);
+  const inc = ctx.db.incidents.id.find(args.incidentId)!;
+  if (!approver || approver.service || approver.status !== "ACTIVE" || !grants[approverMember?.role ?? ""]?.includes("APPROVE") || !requester || requester.status !== "ACTIVE" || !grants[requesterMember?.role ?? ""]?.includes("PROPOSE") || ["RESOLVED", "ARCHIVED"].includes(inc.status)) fail("FORBIDDEN", "Active approval participants and incident required");
+  const target = scoped(ctx.db.operationalTargets.id.find(row.targetId), args.incidentId, "Response target");
+  version(target.version, row.expectedTargetVersion);
+  if (!target.active || row.payloadDigest !== responseDigest(ctx, row)) fail("VERSION_CONFLICT", "Reviewed evidence or target changed");
+  ctx.db.operationalResponses.id.update({ ...row, status: "EXECUTING", executionId: `${row.id}:execution`, executionBy: actor.id, version: row.version + 1, updatedAt: iso(ctx) });
+  return row.id;
+}, true));
+export const recordOperationalResult = db.reducer({ ...scopedMeta, responseId: t.string(), proofJson: t.string(), signature: t.string() }, (ctx, args) => command(ctx, "recordOperationalResult", args, args.incidentId, "EXECUTE_RESPONSE", actor => {
+  if (actor.service) fail("FORBIDDEN", "Human execution scope required");
+  const row = scoped(ctx.db.operationalResponses.id.find(args.responseId), args.incidentId, "Response");
+  const p = operationalProof(ctx, args.proofJson, args.signature, args.incidentId) as unknown as ResponseResult;
+  const target = scoped(ctx.db.operationalTargets.id.find(row.targetId), args.incidentId, "Response target");
+  if (p.kind !== "RESULT" || p.responseId !== row.id || p.executionId !== row.executionId || !row.executionId || p.payloadDigest !== row.payloadDigest || p.connectorId !== target.connectorId) fail("FORBIDDEN", "Execution-bound observation required");
+  if (["VERIFIED_SUCCESS", "VERIFIED_FAILED"].includes(row.status)) { if (row.resultJson !== args.proofJson) fail("IDEMPOTENCY_CONFLICT", "Execution already has a terminal observation"); return row.id; }
+  if (!["EXECUTING", "UNCONFIRMED"].includes(row.status)) fail("INVALID_TRANSITION", "Durable execution claim required");
+  oneOf(p.status, ["VERIFIED_SUCCESS", "VERIFIED_FAILED", "UNCONFIRMED"], "execution outcome"); recentObservation(ctx, p.observedAt);
+  if (p.receipt && p.receipt.requestId !== row.executionId) fail("INVALID_INPUT", "Receipt effect identity mismatch");
+  if (p.status === "VERIFIED_SUCCESS" && (!p.receipt?.applied || p.receipt.beforeVersion !== row.expectedStateVersion || p.receipt.instanceId !== row.instanceId || p.observation?.instanceId !== row.instanceId || p.observation.version !== p.receipt.afterVersion || p.observation.loginEnabled !== (row.operation === "ENABLE_APPLICATION_LOGIN") || p.healthStatus !== 200 || p.loginProbeStatus !== (row.operation === "ENABLE_APPLICATION_LOGIN" ? 200 : 403))) fail("INVALID_INPUT", "Independent application verification required");
+  if (p.status === "VERIFIED_FAILED" && (!p.receipt || p.receipt.applied)) fail("INVALID_INPUT", "Authoritative failed receipt required");
+  ctx.db.operationalResponses.id.update({ ...row, status: p.status, resultJson: args.proofJson, version: row.version + 1, updatedAt: iso(ctx) });
+  return row.id;
+}));
+
 function requireActiveRun(ctx: Ctx, run: {createdAt:string;requestedBy:string;incidentId:string}) {
   if (seconds(ctx) * 1000 >= Date.parse(run.createdAt) + 120000) fail("INVALID_TRANSITION", "Run deadline exceeded");
   const requester = ctx.db.users.id.find(run.requestedBy);
@@ -1140,8 +1334,11 @@ export const recordInvestigationEvent = db.reducer(
           if (!args.provider || !args.model || !args.dataJson) fail("INVALID_INPUT", "Actual provider/model and call metadata required");
           let data: ReturnType<typeof providerCallData>;
           try { data = providerCallData(JSON.parse(args.dataJson), args.type); } catch { fail("INVALID_INPUT", "Invalid provider call metadata"); }
-          // Current gateway permits external inference over sanitized synthetic evidence only.
-          if (data.classification !== "SYNTHETIC") fail("EVIDENCE_REDACTED", "Only synthetic provider calls permitted");
+          const inc = scoped(ctx.db.incidents.id.find(args.incidentId), args.incidentId, "Incident");
+          const approved = [...ctx.db.evidence.incidentId.filter(args.incidentId)].filter(e => e.modelApproved);
+          const classification = inc.classification === "RESTRICTED" || approved.some(e => e.classification === "RESTRICTED") ? "RESTRICTED" : inc.classification;
+          if (data.classification !== classification) fail("EVIDENCE_REDACTED", "Provider classification must match the approved scope");
+          if (inc.scenarioId === "evidence-driven" && !approved.some(e => e.classification !== "SYNTHETIC")) fail("EVIDENCE_REDACTED", "Approved operational evidence required");
           const prior = [...ctx.db.streamEvents.incidentId.filter(args.incidentId)].filter(e => e.runId === run.id && isProviderCallEvent(e.type) && e.dataJson && JSON.parse(e.dataJson).providerCallId === data.providerCallId);
           if (args.type === "provider_call_started") {
             if (prior.length) fail("INVALID_TRANSITION", "Provider call already started");
@@ -1156,7 +1353,7 @@ export const recordInvestigationEvent = db.reducer(
         if(args.type==="run_completed" && args.dataJson){
           const data=JSON.parse(args.dataJson);
           if(data?.planning!==undefined){
-            try{planningJson=canonical(canonicalPlanning(data.planning,scenarioFor(ctx,args.incidentId).state as Scenario));dataJson=canonical({...data,planning:JSON.parse(planningJson)});}
+            try{const inc = scoped(ctx.db.incidents.id.find(args.incidentId),args.incidentId,"Incident"); planningJson=canonical(inc.scenarioId === "evidence-driven" ? canonicalObservationPlanning(data.planning) : canonicalPlanning(data.planning,scenarioFor(ctx,args.incidentId).state as Scenario));dataJson=canonical({...data,planning:JSON.parse(planningJson)});}
             catch{fail("INVALID_MODEL_OUTPUT","Invalid completed planning");}
           }
         }
@@ -1858,6 +2055,8 @@ export const exportReport = db.reducer({ ...scopedMeta }, (ctx, args) =>
       ),
       evidenceIndex: evidenceIndex([...ctx.db.evidence.incidentId.filter(args.incidentId)]),
       actions: actionIndex([...ctx.db.proposals.incidentId.filter(args.incidentId)]),
+      operationalTargets: [...ctx.db.operationalTargets.incidentId.filter(args.incidentId)],
+      operationalResponses: [...ctx.db.operationalResponses.incidentId.filter(args.incidentId)].map(({ previewJson, resultJson, ...row }) => ({ ...row, preview: JSON.parse(previewJson), result: resultJson ? JSON.parse(resultJson) : null })),
       investigations: [...ctx.db.investigations.incidentId.filter(args.incidentId)].map(r=>({id:r.id,status:r.status,provider:r.provider,model:r.model,...(r.planningJson?{planning:planningIndex(r.planningJson)}:{}),requestedBy:r.requestedBy,createdAt:r.createdAt,updatedAt:r.updatedAt})),
       findings: findingIndex([...ctx.db.findings.incidentId.filter(args.incidentId)]),
       findingReviews: findingReviews([...ctx.db.auditEvents.incidentId.filter(args.incidentId)]),
@@ -1993,6 +2192,14 @@ export const scopedAssets = db.view(
     return [...ctx.db.assets.iter()].filter((row) => ids.has(row.incidentId));
   },
 );
+export const scopedOperationalTargets = db.view({ name: "scoped_operational_targets", public: true }, { lease: t.string() }, t.array(tables.operationalTargets.rowType), (ctx, { lease }) => {
+  const ids = visibleIds(ctx, lease);
+  return readUser(ctx, lease)?.service ? [] : [...ctx.db.operationalTargets.iter()].filter(r => ids.has(r.incidentId));
+});
+export const scopedOperationalResponses = db.view({ name: "scoped_operational_responses", public: true }, { lease: t.string() }, t.array(tables.operationalResponses.rowType), (ctx, { lease }) => {
+  const ids = visibleIds(ctx, lease);
+  return readUser(ctx, lease)?.service ? [] : [...ctx.db.operationalResponses.iter()].filter(r => ids.has(r.incidentId));
+});
 export const scopedEvidence = db.view(
   { name: "scoped_evidence", public: true },
   { lease: t.string() },

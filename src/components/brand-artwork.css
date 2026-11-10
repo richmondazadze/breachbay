@@ -1,0 +1,15 @@
+.bb-artwork { display: block; max-width: 100%; height: auto; object-fit: contain; user-select: none; }
+.bb-artwork-empty { display: flex; align-items: center; justify-content: center; gap: 28px; padding: 28px 20px; text-align: left; }
+.bb-artwork-empty > .bb-artwork { width: 136px; flex-shrink: 0; }
+.bb-artwork-empty > div { max-width: 340px; }
+.bb-artwork-empty h3 { margin: 0 0 8px; font-size: 18px; font-weight: 500; letter-spacing: -.4px; }
+.bb-artwork-empty p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.65; }
+.bb-investigation-intro { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.bb-investigation-intro .bb-artwork { width: 104px; flex-shrink: 0; }
+@media (max-width: 600px) {
+  .bb-artwork-empty { gap: 20px; padding: 24px 8px; }
+  .bb-artwork-empty > .bb-artwork { width: 94px; }
+  .bb-artwork-empty h3 { font-size: 16px; }
+  .bb-artwork-empty p { font-size: 12px; }
+  .bb-investigation-intro .bb-artwork { width: 78px; }
+}

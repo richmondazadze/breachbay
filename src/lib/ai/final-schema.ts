@@ -36,6 +36,11 @@ export function providerTransportSchema(format: FinalJsonSchema): FinalJsonSchem
   const alternative = alternatives?.items?.properties;
   const proposals = properties?.proposal.anyOf;
   const nullProposal = proposals?.find(node => node.type === 'null');
+  // Observation reports have no executable actions and use a compact grammar.
+  if (properties && planning && alternatives?.maxItems === 0 && proposals?.length === 1 && nullProposal) {
+    properties.proposal = nullProposal;
+    return transport;
+  }
   if (!properties || !planning || !alternatives || !alternative || !proposals || !nullProposal) throw new OutputValidationError({ stage: 'FINAL_JSON', reason: 'FINAL_SCHEMA_INVALID' });
   const actions = proposals.filter(node => node.type === 'object');
   // Full object branches use only existing schema keywords; never enumerate target combinations.
@@ -53,6 +58,17 @@ export function providerTransportSchema(format: FinalJsonSchema): FinalJsonSchem
 const object = (properties: Record<string, SchemaNode>): SchemaNode => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false });
 const text = (maxLength: number): SchemaNode => ({ type: 'string', minLength: 1, maxLength });
 const strings = (maxItems: number, maxLength: number): SchemaNode => ({ type: 'array', items: text(maxLength), maxItems });
+
+/** Observation-only investigations cannot manufacture a containment proposal or a simulated alternative. */
+export function observationResponseSchema(evidence: SanitizedEvidence[], retrievedIds: Set<string>, incidentId: string): FinalJsonSchema {
+  const ids = citationManifest(evidence, retrievedIds, incidentId).map(e => e.evidenceId);
+  if (!ids.length) throw new OutputValidationError({ stage: 'FINDINGS', reason: 'NO_FINDINGS' });
+  return { name: 'breachbay_final', strict: true, schema: object({
+    findings: { type: 'array', minItems: 1, maxItems: 2, items: object({ summary: text(400), confidence: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH'] }, evidenceIds: { type: 'array', minItems: 1, maxItems: ids.length, uniqueItems: true, items: { type: 'string', enum: ids } }, unknowns: strings(2, 1000), recommendedNextQueries: strings(2, 200) }) },
+    planning: object({ assumptions: strings(2, 500), uncertainty: strings(2, 500), alternatives: { type: 'array', maxItems: 0, items: object({}) } }),
+    proposal: { anyOf: [{ type: 'null' }] },
+  }) };
+}
 
 /** Only scoped retrieved citations and synthetic assets/communication edges enter enums. */
 export function finalResponseSchema(scenario: Scenario, evidence: SanitizedEvidence[], retrievedIds: Set<string>): FinalJsonSchema {

@@ -37,9 +37,23 @@ export interface EvidenceUploadCommand extends CommandMeta {
   title: string;
   capturedAt?: string;
   modelApproved: boolean;
+  classification?: "SYNTHETIC" | "INTERNAL" | "RESTRICTED";
+  logFormat?: "breachbay-jsonl" | "nginx-combined";
+  source?: string;
+  sourceHost?: string;
 }
+export interface LogPreview { eventCount: number; sha256: string; redactedSha256: string; redactedContent: string; capturedAt: string }
 export interface ProtectedDownload { blob: Blob; filename: string }
 export interface IncidentClient {
+  readOperationalPreview?(incidentId: string): Promise<CommandResult<{ name: string; preview: import("@/lib/response/contract").ResponsePreview; proofJson: string; signature: string }>>;
+  registerOperationalTarget?(command: CommandMeta & { incidentId: string; name: string; owner: string; criticality: string; reason: string; expectedVersion: number; proofJson: string; signature: string }): Promise<CommandResult<{ id: string }>>;
+  retireOperationalTarget?(command: CommandMeta & { incidentId: string; targetId: string; expectedVersion: number; reason: string }): Promise<CommandResult<{ id: string }>>;
+  withdrawOperationalResponse?(command: CommandMeta & { incidentId: string; responseId: string; expectedVersion: number; reason: string }): Promise<CommandResult<{ id: string }>>;
+  proposeOperationalResponse?(command: CommandMeta & { incidentId: string; targetId: string; operation: import("@/lib/response/contract").RealOperation; expectedTargetVersion: number; proofJson: string; signature: string; evidenceIds: string[]; rationale: string }): Promise<CommandResult<{ id: string }>>;
+  approveOperationalResponse?(command: CommandMeta & { incidentId: string; responseId: string; expectedVersion: number; decision: string; reason: string }): Promise<CommandResult<{ id: string }>>;
+  executeOperationalResponse?(command: CommandMeta & { incidentId: string; responseId: string; expectedVersion: number }): Promise<CommandResult<{ id: string }>>;
+  previewEvidence?(command: EvidenceUploadCommand): Promise<CommandResult<LogPreview>>;
+  approveEvidenceForModel?(command: CommandMeta & { incidentId: string; evidenceId: string; expectedVersion: number; approved: boolean; reason: string }): Promise<CommandResult<{ id: string }>>;
   setIncidentRetentionPolicy(command: SetIncidentRetentionPolicyCommand): Promise<CommandResult<{ id: string }>>;
   readGraphEdgeReview(incidentId: string, edgeId: string): Promise<CommandResult<GraphEdgeReviewPreparation>>;
   reviewGraphEdge(command: ReviewGraphEdgeCommand): Promise<CommandResult<{ id: string }>>;

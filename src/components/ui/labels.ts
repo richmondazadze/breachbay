@@ -2,6 +2,11 @@ const actionLabels: Record<string, string> = {
   ISOLATE_SIMULATED_HOST: "Isolate a host",
   BLOCK_SIMULATED_ROUTE: "Block a communication route",
   RESET_SIMULATED_CREDENTIAL: "Reset an attributed credential",
+  DISABLE_APPLICATION_LOGIN: "Disable application access",
+  ENABLE_APPLICATION_LOGIN: "Restore application login",
+  VERIFIED_SUCCESS: "Application effect verified",
+  VERIFIED_FAILED: "Application rejected the response",
+  UNCONFIRMED: "Outcome unconfirmed",
 };
 export function displayLabel(value: string) {
   return actionLabels[value] ?? value.toLowerCase().replaceAll("_", " ").replace(/^./, letter => letter.toUpperCase());

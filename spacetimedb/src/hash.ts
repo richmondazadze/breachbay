@@ -1,6 +1,6 @@
 /** Portable SHA-256 used inside the deterministic module runtime. */
-export function sha256(text: string): string {
-  const bytes = new TextEncoder().encode(text);
+export function sha256(text: string | Uint8Array): string {
+  const bytes = typeof text === "string" ? new TextEncoder().encode(text) : text;
   const k = [
     0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1,
     0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
@@ -70,4 +70,15 @@ export function canonical(value: unknown): string {
       .map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`)
       .join(",")}}`;
   return JSON.stringify(value) ?? "null";
+}
+/** Standard HMAC-SHA256; the operator key never appears in public rows. */
+export function hmac256(key: string, value: string): string {
+  const encoded = new TextEncoder().encode(key);
+  const keyBytes = encoded.length > 64 ? Uint8Array.from(sha256(encoded).match(/../g)!.map(x => parseInt(x, 16))) : encoded;
+  const inner = new Uint8Array(64 + new TextEncoder().encode(value).length);
+  const outer = new Uint8Array(96);
+  for (let i = 0; i < 64; i++) { inner[i] = (keyBytes[i] ?? 0) ^ 0x36; outer[i] = (keyBytes[i] ?? 0) ^ 0x5c; }
+  inner.set(new TextEncoder().encode(value), 64);
+  outer.set(Uint8Array.from(sha256(inner).match(/../g)!.map(x => parseInt(x, 16))), 64);
+  return sha256(outer);
 }

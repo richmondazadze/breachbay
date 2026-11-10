@@ -215,6 +215,16 @@ export const evidenceStorage = table(
   { name: "evidence_storage" },
   { ...scope(), storageRef: t.string() },
 );
+export const operationalTargets = table({ name: "operational_targets" }, {
+  ...scope(), connectorId: t.string(), assetId: t.string(), name: t.string(), owner: t.string(), criticality: t.string(), active: t.bool(),
+  version: t.u32(), instanceId: t.string(), reviewedBy: t.string(), reviewedAt: t.string(),
+});
+export const operationalResponses = table({ name: "operational_responses" }, {
+  ...scope(), targetId: t.string(), operation: t.string(), expectedTargetVersion: t.u32(), expectedStateVersion: t.u32(), instanceId: t.string(),
+  payloadDigest: t.string(), previewJson: t.string(), evidenceIds: t.array(t.string()), rationale: t.string(), requestedBy: t.string(),
+  status: t.string(), version: t.u32(), approvalBy: t.option(t.string()), approvalReason: t.option(t.string()), approvalExpiresAt: t.option(t.string()),
+  executionId: t.option(t.string()), executionBy: t.option(t.string()), resultJson: t.option(t.string()), createdAt: t.string(), updatedAt: t.string(),
+});
 export const indicators = table(
   { name: "indicators" },
   {
@@ -475,6 +485,8 @@ const db = schema(
     assets,
     evidence,
     evidenceStorage,
+    operationalTargets,
+    operationalResponses,
     indicators,
     graphEdges,
     graphReviews,
@@ -505,6 +517,7 @@ const db = schema(
       OIDC_AUDIENCE: t.string(),
       BOOTSTRAP_COMMANDER_SUBJECTS: t.string(),
       SERVICE_SUBJECTS: t.string().optional(),
+      RESPONSE_SIGNING_KEY: t.string().optional(),
     },
   },
 );

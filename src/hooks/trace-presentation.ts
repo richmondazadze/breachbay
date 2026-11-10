@@ -45,7 +45,7 @@ export function providerCallDetails(event: Pick<InvestigationStreamEvent, "type"
     if (!data || typeof data !== "object" || Array.isArray(data)) return undefined;
     const step = integer(data.step, 7);
     const outcome = event.type === "provider_call_started" ? "started" : event.type === "provider_call_completed" ? "completed" : "failed";
-    if (typeof data.providerCallId !== "string" || !/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(data.providerCallId) || step === undefined || !["tools", "final_json"].includes(data.mode) || data.outcome !== outcome || data.classification !== "SYNTHETIC" || data.monetaryCost !== "UNKNOWN") return undefined;
+    if (typeof data.providerCallId !== "string" || !/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(data.providerCallId) || step === undefined || !["tools", "final_json"].includes(data.mode) || data.outcome !== outcome || !["SYNTHETIC", "INTERNAL", "RESTRICTED"].includes(data.classification) || data.monetaryCost !== "UNKNOWN") return undefined;
     if (typeof data.endpoint !== "string" || data.endpoint.length > 500) return undefined;
     const url = new URL(data.endpoint);
     if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) return undefined;
@@ -54,7 +54,7 @@ export function providerCallDetails(event: Pick<InvestigationStreamEvent, "type"
     if (outcome !== "started" && (durationMs === undefined || durationMs > 120000)) return undefined;
     const failure = code(data.code);
     if (outcome === "failed" && !failure) return undefined;
-    const result: ProviderCallEventData = { providerCallId: data.providerCallId, step, mode: data.mode, endpoint: url.href, classification: "SYNTHETIC", usageSource: data.usageSource, outcome, monetaryCost: "UNKNOWN" };
+    const result: ProviderCallEventData = { providerCallId: data.providerCallId, step, mode: data.mode, endpoint: url.href, classification: data.classification, usageSource: data.usageSource, outcome, monetaryCost: "UNKNOWN" };
     if (outcome !== "started") result.durationMs = durationMs;
     if (outcome === "failed") result.code = failure;
     if (outcome !== "started" && finishReasons.includes(data.finishReason)) result.finishReason = data.finishReason;
